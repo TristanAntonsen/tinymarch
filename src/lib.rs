@@ -9,7 +9,7 @@ pub type Point = Point3<f64>;
 pub type Vector = Vector3<f64>;
 pub type Color = Vector3<f64>;
 
-pub const MAX_STEPS: usize =  100;
+pub const MAX_STEPS: usize =  1000;
 pub const MAX_DIST: f64 =  100. ;
 pub const SURF_DIST: f64 =  0.01;
 
@@ -66,7 +66,14 @@ pub fn render(res_x: usize, res_y: usize) {
 }
 
 pub fn eval(p: Point) -> f64 {
-    return distance(&p, &point![0.0, 0.0, 1.0]) - 0.5
+    let s1 = sphere(p, point![0.0, -10.0, 1.0], 9.5); 
+    let s2 = sphere(p, point![0.0, 0.0, 1.0], 0.5); 
+    return s1.min(s2)
+
+}
+
+pub fn sphere(p: Point, c: Point, r: f64) -> f64 {
+    return distance(&p, &c) - r
 }
 
 pub fn gradient(p: Point) -> Vector {
