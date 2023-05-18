@@ -52,8 +52,7 @@ pub fn render(res_x: usize, res_y: usize) {
 
                     // shading
                     if d >= MAX_DIST {
-                        let t = 0.5*(rd.y + 1.0);
-                        (1.0-t) * vector![1., 1., 1.] + t * vector!(0.5, 0.7, 1.0)
+                        sky(rd)
                     } else {
                         let p = ro + d * rd;
                         let g = (gradient(p) + vector![1., 1., 1.]) * 0.5;
@@ -93,10 +92,15 @@ pub fn ray_march(ro: Point, rd: Vector) -> f64 {
         let ds = eval(p);
         d += ds;
         if d >= MAX_DIST || ds < SURF_DIST {
-            return d
+            break;
         }
     }
     return d
+}
+
+pub fn sky(rd: Vector) -> Color {
+    let t = 0.5*(rd.y + 1.0);
+    t * vector![1., 1., 1.] + (1.0-t) * vector!(0.5, 0.7, 1.0)
 }
 
 pub fn save_png(pixels: Vec<Vec<Color>>, path: &str) {
