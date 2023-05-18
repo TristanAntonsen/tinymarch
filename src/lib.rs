@@ -1,5 +1,4 @@
-use image::io::Reader as ImageReader;
-use image::{DynamicImage, GenericImageView, ImageBuffer, Rgb, RgbImage, Pixel};
+use image::{Rgb, RgbImage};
 use nalgebra::{vector, Point3, Vector3, point, distance};
 
 // ======================================================================
