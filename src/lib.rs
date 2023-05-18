@@ -36,6 +36,7 @@ pub fn render(res_x: usize, res_y: usize) {
         .into_iter()
         .map(|x| {
             (0..res_y)
+                .rev()
                 .into_iter()
                 .map(|y| {
 
@@ -54,7 +55,9 @@ pub fn render(res_x: usize, res_y: usize) {
                         let t = 0.5*(rd.y + 1.0);
                         (1.0-t) * vector![1., 1., 1.] + t * vector!(0.5, 0.7, 1.0)
                     } else {
-                        return RED; 
+                        let p = ro + d * rd;
+                        let g = (gradient(p) + vector![1., 1., 1.]) * 0.5;
+                        return g; 
                     }
                 })
                 .collect::<Vec<Color>>()
@@ -66,6 +69,20 @@ pub fn render(res_x: usize, res_y: usize) {
 
 pub fn eval(p: Point) -> f64 {
     return distance(&p, &point![0.0, 0.0, 1.0]) - 0.5
+}
+
+pub fn gradient(p: Point) -> Vector {
+    let epsilon = 0.0001;
+    let dx = Vector3::new(epsilon, 0., 0.);
+    let dy = Vector3::new(0., epsilon, 0.);
+    let dz = Vector3::new(0., 0., epsilon);
+
+    // Gradient: dSDF/dx, dy, dz
+    let ddx = eval(p + dx) - eval(p - dx);
+    let ddy = eval(p + dy) - eval(p - dy);
+    let ddz = eval(p + dz) - eval(p - dz);
+
+    vector![ddx, ddy, ddz].normalize()
 }
 
 pub fn ray_march(ro: Point, rd: Vector) -> f64 {
