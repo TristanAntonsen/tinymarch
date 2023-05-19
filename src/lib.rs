@@ -35,7 +35,12 @@ pub fn render(res_x: usize, res_y: usize) {
         ro - 0.5 * horizontal - 0.5 * vertical - vector![0.0, 0.0, -focal_length];
 
     // light
-    let light_pos = point![1.0, 1.0, -1.0];
+    let lights = vec![
+        point![1.0, 1.0, -1.0],
+        point![-1.0, 1.0, -1.0],
+        point![1.0, -1.0, -1.0],
+        point![-1.0, -1.0, -1.0],
+    ];
     // material
     let albedo = vector![1.0, 0.0, 0.0];
     let roughness = 0.25;
@@ -55,8 +60,7 @@ pub fn render(res_x: usize, res_y: usize) {
                     let v = y as f64 / res_y as f64;
 
                     // ray direction
-                    let rd =
-                        (lower_left_corner + u * horizontal + v * vertical - ro).normalize();
+                    let rd = (lower_left_corner + u * horizontal + v * vertical - ro).normalize();
 
                     // ray marching
                     let d = ray_march(ro, rd);
@@ -68,34 +72,38 @@ pub fn render(res_x: usize, res_y: usize) {
                         // intersection point & normal
                         let p = ro + d * rd;
                         let n = gradient(p);
-                        // reflectance equation
-                        // radiance
-                        let mut lo = vec3(0.0);
-                        let v = -rd;
-                        let l = (light_pos - p).normalize();
-                        let h = (v + l).normalize();
-                        let dist = (light_pos - p).norm();
-                        let attenuation = 1.0 / (dist * dist);
-                        let radiance = vec3(1.0) * attenuation;
                         
-                        // brdf (cook-torrance)
-                        let ndf = distribution_ggx(n, h, roughness);
-                        let g = geometry_smith(n, v, l, roughness);
-                        let f = fresnel_schlick(h.dot(&v).max(0.0), f0);
+                        let mut lo = vec3(0.0);
+                        for light_pos in &lights {
+                            // reflectance equation
+                            // radiance
+                            let v = -rd;
+                            let l = (light_pos - p).normalize();
+                            let h = (v + l).normalize();
+                            let dist = (light_pos - p).norm();
+                            let attenuation = 1.0 / (dist * dist);
+                            let radiance = vec3(1.0) * attenuation;
 
-                        let ks = f;
-                        let kd = (vec3(1.0) - ks) * (1.0 - metallic);
+                            // brdf (cook-torrance)
+                            let ndf = distribution_ggx(n, h, roughness);
+                            let g = geometry_smith(n, v, l, roughness);
+                            let f = fresnel_schlick(h.dot(&v).max(0.0), f0);
 
-                        let numerator = ndf * g * f;
-                        let denomenator = 4.0 * n.dot(&v).max(0.0) * n.dot(&l).max(0.0) + 0.0001;
-                        let specular = numerator / denomenator;
+                            let ks = f;
+                            let kd = (vec3(1.0) - ks) * (1.0 - metallic);
 
-                        let n_dot_l = n.dot(&l).max(0.0);
+                            let numerator = ndf * g * f;
+                            let denomenator =
+                                4.0 * n.dot(&v).max(0.0) * n.dot(&l).max(0.0) + 0.0001;
+                            let specular = numerator / denomenator;
 
-                        lo += multiply_vectors(
-                                    multiply_vectors(kd, albedo) / PI + specular,
-                                    radiance * n_dot_l
-                        ); 
+                            let n_dot_l = n.dot(&l).max(0.0);
+
+                            lo += multiply_vectors(
+                                multiply_vectors(kd, albedo) / PI + specular,
+                                radiance * n_dot_l,
+                            );
+                        }
 
                         let ambient = albedo * 0.03;
                         let mut color = ambient + lo;
@@ -128,7 +136,7 @@ fn distribution_ggx(n: Vector, h: Vector, roughness: f64) -> f64 {
     let mut denom = n_dot_h2 * (a2 - 1.0) + 1.0;
     denom = PI * denom * denom;
 
-    return num / denom
+    return num / denom;
 }
 
 // Geometry Function
@@ -230,27 +238,15 @@ pub fn mix_vectors(v1: Vector, v2: Vector, t: f64) -> Vector {
 }
 
 pub fn multiply_vectors(v1: Vector, v2: Vector) -> Vector {
-    vector![
-        v1.x * v2.x,
-        v1.y * v2.y,
-        v1.z * v2.z
-    ]
+    vector![v1.x * v2.x, v1.y * v2.y, v1.z * v2.z]
 }
 
 pub fn divide_vectors(v1: Vector, v2: Vector) -> Vector {
-    vector![
-        v1.x * v2.x,
-        v1.y * v2.y,
-        v1.z * v2.z
-    ]
+    vector![v1.x * v2.x, v1.y * v2.y, v1.z * v2.z]
 }
 
 pub fn powf_vector(v: Vector, p: f64) -> Vector {
-    vector![
-        v.x.powf(p),
-        v.y.powf(p),
-        v.z.powf(p)
-    ]
+    vector![v.x.powf(p), v.y.powf(p), v.z.powf(p)]
 }
 
 ////////// Math //////////
