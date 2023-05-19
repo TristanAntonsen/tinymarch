@@ -1,3 +1,6 @@
+use core::num;
+use std::f64::consts::PI;
+
 use image::{Rgb, RgbImage};
 use nalgebra::{distance, point, vector, Point3, Vector3};
 
@@ -31,6 +34,15 @@ pub fn render(res_x: usize, res_y: usize) {
     let lower_left_corner =
         ro - 0.5 * horizontal - 0.5 * vertical - vector![0.0, 0.0, -focal_length];
 
+    // light
+    let light_pos = point![1.0, 1.0, -1.0];
+    // material
+    let albedo = vector![1.0, 0.0, 0.0];
+    let roughness = 0.25;
+    let metallic = 0.;
+    let mut f0 = vec3(0.04);
+    f0 = mix_vectors(f0, albedo, metallic);
+
     let pixels = (0..res_x)
         .into_iter()
         .map(|x| {
@@ -53,7 +65,44 @@ pub fn render(res_x: usize, res_y: usize) {
                     if d >= MAX_DIST {
                         sky(rd)
                     } else {
-                        RED
+                        // intersection point & normal
+                        let p = ro + d * rd;
+                        let n = gradient(p);
+                        // reflectance equation
+                        // radiance
+                        let mut lo = vec3(0.0);
+                        let v = -rd;
+                        let l = (light_pos - p).normalize();
+                        let h = (v + l).normalize();
+                        let dist = (light_pos - p).norm();
+                        let attenuation = 1.0 / (dist * dist);
+                        let radiance = vec3(1.0) * attenuation;
+                        
+                        // brdf (cook-torrance)
+                        let ndf = distribution_ggx(n, h, roughness);
+                        let g = geometry_smith(n, v, l, roughness);
+                        let f = fresnel_schlick(h.dot(&v).max(0.0), f0);
+
+                        let ks = f;
+                        let kd = (vec3(1.0) - ks) * (1.0 - metallic);
+
+                        let numerator = ndf * g * f;
+                        let denomenator = 4.0 * n.dot(&v).max(0.0) * n.dot(&l).max(0.0) + 0.0001;
+                        let specular = numerator / denomenator;
+
+                        let n_dot_l = n.dot(&l).max(0.0);
+
+                        lo += multiply_vectors(
+                                    multiply_vectors(kd, albedo) / PI + specular,
+                                    radiance * n_dot_l
+                        ); 
+
+                        let ambient = albedo * 0.03;
+                        let mut color = ambient + lo;
+                        color = divide_vectors(color, color + vec3(1.0));
+                        color = powf_vector(color, 1.0 / 2.2);
+                        color
+                        // RED
                     }
                 })
                 .collect::<Vec<Color>>()
@@ -61,6 +110,44 @@ pub fn render(res_x: usize, res_y: usize) {
         .collect::<Vec<Vec<Color>>>();
 
     save_png(pixels, "output.png")
+}
+
+// Fresnel Equation - Fresnel-Schlick approximation
+fn fresnel_schlick(cos_theta: f64, f0: Vector) -> Vector {
+    f0 + (vec3(1.0) - f0) * clamp(1.0 - cos_theta, 0.0, 1.0).powf(5.0)
+}
+
+// Normal Distribution Function
+fn distribution_ggx(n: Vector, h: Vector, roughness: f64) -> f64 {
+    let a = roughness * roughness;
+    let a2 = a * a;
+    let n_dot_h = n.dot(&h).max(0.0);
+    let n_dot_h2 = n_dot_h * n_dot_h;
+
+    let num = a2;
+    let mut denom = n_dot_h2 * (a2 - 1.0) + 1.0;
+    denom = PI * denom * denom;
+
+    return num / denom
+}
+
+// Geometry Function
+fn geometry_smith(n: Vector, v: Vector, l: Vector, roughness: f64) -> f64 {
+    let n_dot_v = n.dot(&v).max(0.0);
+    let n_dot_l = n.dot(&l).max(0.0);
+    let ggx2 = geometry_schlick_ggx(n_dot_v, roughness);
+    let ggx1 = geometry_schlick_ggx(n_dot_l, roughness);
+
+    ggx1 * ggx2
+}
+// Geometry Schlick GGX
+fn geometry_schlick_ggx(n_dot_v: f64, roughness: f64) -> f64 {
+    let r = roughness + 1.0;
+    let k = r * r / 8.0;
+    let num = n_dot_v;
+    let denom = n_dot_v * (1.0 - k) + k;
+
+    num / denom
 }
 
 pub fn eval(p: Point) -> f64 {
@@ -102,8 +189,9 @@ pub fn ray_march(ro: Point, rd: Vector) -> f64 {
 }
 
 pub fn sky(rd: Vector) -> Color {
-    let t = 0.5 * (rd.y + 1.0);
-    t * vector![1., 1., 1.] + (1.0 - t) * vector!(0.5, 0.7, 1.0)
+    // let t = 0.5 * (rd.y + 1.0);
+    // t * vector![1., 1., 1.] + (1.0 - t) * vector!(0.5, 0.7, 1.0)
+    BLACK
 }
 
 pub fn save_png(pixels: Vec<Vec<Color>>, path: &str) {
@@ -124,4 +212,52 @@ pub fn save_png(pixels: Vec<Vec<Color>>, path: &str) {
     println!("{} exported.", path);
 
     img.save(path).expect("Could not save png");
+}
+
+////////// Vectors //////////
+
+// create a Vector3 with constant values
+pub fn vec3(a: f64) -> Vector {
+    vector![a, a, a]
+}
+
+pub fn mix_vectors(v1: Vector, v2: Vector, t: f64) -> Vector {
+    vector![
+        lerp(v1.x, v2.x, t),
+        lerp(v1.y, v2.y, t),
+        lerp(v1.z, v2.z, t)
+    ]
+}
+
+pub fn multiply_vectors(v1: Vector, v2: Vector) -> Vector {
+    vector![
+        v1.x * v2.x,
+        v1.y * v2.y,
+        v1.z * v2.z
+    ]
+}
+
+pub fn divide_vectors(v1: Vector, v2: Vector) -> Vector {
+    vector![
+        v1.x * v2.x,
+        v1.y * v2.y,
+        v1.z * v2.z
+    ]
+}
+
+pub fn powf_vector(v: Vector, p: f64) -> Vector {
+    vector![
+        v.x.powf(p),
+        v.y.powf(p),
+        v.z.powf(p)
+    ]
+}
+
+////////// Math //////////
+pub fn lerp(a: f64, b: f64, t: f64) -> f64 {
+    a + t * (b - a)
+}
+
+fn clamp(x: f64, a: f64, b: f64) -> f64 {
+    x.max(a).min(b)
 }
