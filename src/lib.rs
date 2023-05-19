@@ -1,5 +1,5 @@
 use image::{Rgb, RgbImage};
-use nalgebra::{vector, Point3, Vector3, point, distance};
+use nalgebra::{distance, point, vector, Point3, Vector3};
 
 // ======================================================================
 // ======================= Data types & Constants =======================
@@ -9,9 +9,9 @@ pub type Point = Point3<f64>;
 pub type Vector = Vector3<f64>;
 pub type Color = Vector3<f64>;
 
-pub const MAX_STEPS: usize =  1000;
-pub const MAX_DIST: f64 =  100. ;
-pub const SURF_DIST: f64 =  0.01;
+pub const MAX_STEPS: usize = 1000;
+pub const MAX_DIST: f64 = 1000.;
+pub const SURF_DIST: f64 = 0.001;
 
 pub const BLACK: Color = vector![0.0, 0.0, 0.0];
 pub const WHITE: Color = vector![1.0, 1.0, 1.0];
@@ -20,16 +20,16 @@ pub const GREEN: Color = vector![0.0, 1.0, 0.0];
 pub const BLUE: Color = vector![0.0, 0.0, 1.0];
 
 pub fn render(res_x: usize, res_y: usize) {
-
     let ro = point![0., 0., -1.];
     let viewport_width = 1.0;
-    let viewport_height = res_y as f64 / res_x as f64;    
+    let viewport_height = res_y as f64 / res_x as f64;
 
     // screen orientation
     let horizontal = vector![viewport_width, 0., 0.];
     let vertical = vector![0., viewport_height, 0.];
     let focal_length = 1.0;
-    let lower_left_corner = ro - 0.5 * horizontal - 0.5 * vertical - vector![0.0, 0.0, -focal_length];
+    let lower_left_corner =
+        ro - 0.5 * horizontal - 0.5 * vertical - vector![0.0, 0.0, -focal_length];
 
     let pixels = (0..res_x)
         .into_iter()
@@ -38,13 +38,13 @@ pub fn render(res_x: usize, res_y: usize) {
                 .rev()
                 .into_iter()
                 .map(|y| {
-
                     // screen space coordinates
                     let u = x as f64 / res_x as f64;
                     let v = y as f64 / res_y as f64;
 
                     // ray direction
-                    let rd = (lower_left_corner + u*horizontal + v*vertical - ro).normalize();
+                    let rd =
+                        (lower_left_corner + u * horizontal + v * vertical - ro).normalize();
 
                     // ray marching
                     let d = ray_march(ro, rd);
@@ -53,9 +53,7 @@ pub fn render(res_x: usize, res_y: usize) {
                     if d >= MAX_DIST {
                         sky(rd)
                     } else {
-                        let p = ro + d * rd;
-                        let g = (gradient(p) + vector![1., 1., 1.]) * 0.5;
-                        return g; 
+                        RED
                     }
                 })
                 .collect::<Vec<Color>>()
@@ -66,14 +64,13 @@ pub fn render(res_x: usize, res_y: usize) {
 }
 
 pub fn eval(p: Point) -> f64 {
-    let s1 = sphere(p, point![0.0, -10.0, 1.0], 9.5); 
-    let s2 = sphere(p, point![0.0, 0.0, 1.0], 0.5); 
-    return s1.min(s2)
-
+    // let s1 = sphere(p, point![0.0, -10.0, 1.0], 9.5);
+    let s2 = sphere(p, point![0.0, 0.0, 1.0], 0.5);
+    return s2;
 }
 
 pub fn sphere(p: Point, c: Point, r: f64) -> f64 {
-    return distance(&p, &c) - r
+    return distance(&p, &c) - r;
 }
 
 pub fn gradient(p: Point) -> Vector {
@@ -101,12 +98,12 @@ pub fn ray_march(ro: Point, rd: Vector) -> f64 {
             break;
         }
     }
-    return d
+    return d;
 }
 
 pub fn sky(rd: Vector) -> Color {
-    let t = 0.5*(rd.y + 1.0);
-    t * vector![1., 1., 1.] + (1.0-t) * vector!(0.5, 0.7, 1.0)
+    let t = 0.5 * (rd.y + 1.0);
+    t * vector![1., 1., 1.] + (1.0 - t) * vector!(0.5, 0.7, 1.0)
 }
 
 pub fn save_png(pixels: Vec<Vec<Color>>, path: &str) {
