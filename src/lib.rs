@@ -41,10 +41,11 @@ pub fn render(res_x: usize, res_y: usize) {
         point![1.0, -1.0, -1.0],
         point![-1.0, -1.0, -1.0],
     ];
+    let light_power = 2.0;
     // material
     let albedo = vector![1.0, 0.0, 0.0];
-    let roughness = 0.25;
-    let metallic = 0.;
+    let roughness = 0.96;
+    let metallic = 0.40;
     let mut f0 = vec3(0.04);
     f0 = mix_vectors(f0, albedo, metallic);
 
@@ -82,7 +83,7 @@ pub fn render(res_x: usize, res_y: usize) {
                             let h = (v + l).normalize();
                             let dist = (light_pos - p).norm();
                             let attenuation = 1.0 / (dist * dist);
-                            let radiance = vec3(1.0) * attenuation;
+                            let radiance = vec3(1.0) * attenuation * light_power;
 
                             // brdf (cook-torrance)
                             let ndf = distribution_ggx(n, h, roughness);
@@ -93,11 +94,12 @@ pub fn render(res_x: usize, res_y: usize) {
                             let kd = (vec3(1.0) - ks) * (1.0 - metallic);
 
                             let numerator = ndf * g * f;
-                            let denomenator =
-                                4.0 * n.dot(&v).max(0.0) * n.dot(&l).max(0.0) + 0.0001;
-                            let specular = numerator / denomenator;
-
+                            
                             let n_dot_l = n.dot(&l).max(0.0);
+                            let denomenator =
+                                4.0 * n.dot(&v).max(0.0) * n_dot_l + 0.0001;
+
+                            let specular = numerator / denomenator;
 
                             lo += multiply_vectors(
                                 multiply_vectors(kd, albedo) / PI + specular,
@@ -107,10 +109,8 @@ pub fn render(res_x: usize, res_y: usize) {
 
                         let ambient = albedo * 0.03;
                         let mut color = ambient + lo;
-                        color = divide_vectors(color, color + vec3(1.0));
-                        color = powf_vector(color, 1.0 / 2.2);
+                        color = gamma_correct(color);
                         color
-                        // RED
                     }
                 })
                 .collect::<Vec<Color>>()
@@ -220,6 +220,13 @@ pub fn save_png(pixels: Vec<Vec<Color>>, path: &str) {
     println!("{} exported.", path);
 
     img.save(path).expect("Could not save png");
+}
+
+////////// Colors //////////
+ 
+fn gamma_correct(mut color: Color) -> Color {
+    color = divide_vectors(color, color + vec3(1.0));
+    powf_vector(color, 1.0 / 2.2)
 }
 
 ////////// Vectors //////////
