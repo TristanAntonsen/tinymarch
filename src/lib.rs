@@ -37,10 +37,11 @@ pub fn render(res_x: usize, res_y: usize) {
 
     // light
     let lights = vec![
-        point![1.0, 1.0, -1.0],
-        point![-1.0, 1.0, -1.0],
-        point![1.0, -1.0, -1.0],
-        point![-1.0, -1.0, -1.0],
+        // (origin, power)
+        (point![1.0, 1.0, -1.0], 8.0),
+        (point![-1.0, 1.0, -1.0], 4.0),
+        (point![1.0, -1.0, -1.0], 4.0),
+        (point![-1.0, -1.0, -1.0], 2.0),
     ];
 
     // sampling
@@ -89,7 +90,7 @@ pub fn render(res_x: usize, res_y: usize) {
 }
 
 // shading
-fn pbr(rd: Vector, p: Point, lights: &Vec<Point>) -> Color {
+fn pbr(rd: Vector, p: Point, lights: &Vec<(Point, f64)>) -> Color {
 
     // material parameters
     let light_power = 2.0;
@@ -102,15 +103,15 @@ fn pbr(rd: Vector, p: Point, lights: &Vec<Point>) -> Color {
     let n = gradient(p);
 
     let mut lo = vec3(0.0);
-    for light_pos in lights {
+    for light in lights {
         // reflectance equation
         // radiance
         let v = -rd;
-        let l = (light_pos - p).normalize();
+        let l = (light.0 - p).normalize();
         let h = (v + l).normalize();
-        let dist = (light_pos - p).norm();
+        let dist = (light.0 - p).norm();
         let attenuation = 1.0 / (dist * dist);
-        let radiance = vec3(1.0) * attenuation * light_power;
+        let radiance = vec3(1.0) * attenuation * light.1;
 
         // brdf (cook-torrance)
         let ndf = distribution_ggx(n, h, roughness);
