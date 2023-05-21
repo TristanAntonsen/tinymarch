@@ -42,13 +42,6 @@ pub fn render(res_x: usize, res_y: usize) {
         point![1.0, -1.0, -1.0],
         point![-1.0, -1.0, -1.0],
     ];
-    let light_power = 2.0;
-    // material
-    let albedo = vector![1.0, 0.0, 0.0];
-    let roughness = 0.35;
-    let metallic = 0.0;
-    let mut f0 = vec3(0.04);
-    f0 = mix_vectors(f0, albedo, metallic);
 
     // sampling
     let samples = 16;
@@ -82,43 +75,7 @@ pub fn render(res_x: usize, res_y: usize) {
                         } else {
                             // intersection point & normal
                             let p = ro + d * rd;
-                            let n = gradient(p);
-
-                            let mut lo = vec3(0.0);
-                            for light_pos in &lights {
-                                // reflectance equation
-                                // radiance
-                                let v = -rd;
-                                let l = (light_pos - p).normalize();
-                                let h = (v + l).normalize();
-                                let dist = (light_pos - p).norm();
-                                let attenuation = 1.0 / (dist * dist);
-                                let radiance = vec3(1.0) * attenuation * light_power;
-
-                                // brdf (cook-torrance)
-                                let ndf = distribution_ggx(n, h, roughness);
-                                let g = geometry_smith(n, v, l, roughness);
-                                let f = fresnel_schlick(h.dot(&v).max(0.0), f0);
-
-                                let ks = f;
-                                let kd = (vec3(1.0) - ks) * (1.0 - metallic);
-
-                                let numerator = ndf * g * f;
-
-                                let n_dot_l = n.dot(&l).max(0.0);
-                                let denomenator = 4.0 * n.dot(&v).max(0.0) * n_dot_l + 0.0001;
-
-                                let specular = numerator / denomenator;
-
-                                lo += multiply_vectors(
-                                    multiply_vectors(kd, albedo) / PI + specular,
-                                    radiance * n_dot_l,
-                                );
-                            }
-
-                            let ambient = albedo * 0.03;
-                            color += ambient + lo;
-
+                            color += pbr(rd, p, &lights)
                         }
                     }
                     color *= sample_scale;
@@ -130,6 +87,56 @@ pub fn render(res_x: usize, res_y: usize) {
 
     save_png(pixels, "output.png")
 }
+
+// shading
+fn pbr(rd: Vector, p: Point, lights: &Vec<Point>) -> Color {
+
+    // material parameters
+    let light_power = 2.0;
+    let albedo = vector![1.0, 0.0, 0.0];
+    let roughness = 0.35;
+    let metallic = 0.0;
+    let mut f0 = vec3(0.04);
+    f0 = mix_vectors(f0, albedo, metallic);
+
+    let n = gradient(p);
+
+    let mut lo = vec3(0.0);
+    for light_pos in lights {
+        // reflectance equation
+        // radiance
+        let v = -rd;
+        let l = (light_pos - p).normalize();
+        let h = (v + l).normalize();
+        let dist = (light_pos - p).norm();
+        let attenuation = 1.0 / (dist * dist);
+        let radiance = vec3(1.0) * attenuation * light_power;
+
+        // brdf (cook-torrance)
+        let ndf = distribution_ggx(n, h, roughness);
+        let g = geometry_smith(n, v, l, roughness);
+        let f = fresnel_schlick(h.dot(&v).max(0.0), f0);
+
+        let ks = f;
+        let kd = (vec3(1.0) - ks) * (1.0 - metallic);
+
+        let numerator = ndf * g * f;
+
+        let n_dot_l = n.dot(&l).max(0.0);
+        let denomenator = 4.0 * n.dot(&v).max(0.0) * n_dot_l + 0.0001;
+
+        let specular = numerator / denomenator;
+
+        lo += multiply_vectors(
+            multiply_vectors(kd, albedo) / PI + specular,
+            radiance * n_dot_l,
+        );
+    }
+
+    let ambient = albedo * 0.03;
+    return ambient + lo
+}
+
 
 // Fresnel Equation - Fresnel-Schlick approximation
 fn fresnel_schlick(cos_theta: f64, f0: Vector) -> Vector {
