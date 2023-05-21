@@ -3,7 +3,7 @@ use std::f64::consts::PI;
 use image::{Rgb, RgbImage};
 use nalgebra::{distance, point, vector, Point3, Vector3};
 use rand::Rng;
-use rayon::prelude::{IntoParallelIterator, ParallelIterator, IndexedParallelIterator};
+use rayon::prelude::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 
 // ======================================================================
 // ======================= Data types & Constants =======================
@@ -39,8 +39,8 @@ pub fn render(res_x: usize, res_y: usize) {
     let lights = vec![
         // (origin, power)
         (point![1.0, 1.0, -1.0], 8.0),
-        (point![-1.0, 1.0, -1.0], 4.0),
-        (point![1.0, -1.0, -1.0], 4.0),
+        (point![-1.0, 1.0, -1.0], 2.0),
+        (point![1.0, -1.0, -1.0], 8.0),
         (point![-1.0, -1.0, -1.0], 2.0),
     ];
 
@@ -71,15 +71,16 @@ pub fn render(res_x: usize, res_y: usize) {
 
                         // shading
                         if d >= MAX_DIST {
-                            // color += sky(rd)
-                            color += BLACK
+                            color += sky(rd)
                         } else {
                             // intersection point & normal
                             let p = ro + d * rd;
-                            color += pbr(rd, p, &lights)
+                            // color += pbr(rd, p, &lights)
+                            color += diffuse(ro, rd, p)
                         }
                     }
                     color *= sample_scale;
+                    // color
                     gamma_correct(color)
                 })
                 .collect::<Vec<Color>>()
@@ -91,9 +92,7 @@ pub fn render(res_x: usize, res_y: usize) {
 
 // shading
 fn pbr(rd: Vector, p: Point, lights: &Vec<(Point, f64)>) -> Color {
-
     // material parameters
-    let light_power = 2.0;
     let albedo = vector![1.0, 0.0, 0.0];
     let roughness = 0.35;
     let metallic = 0.0;
@@ -135,9 +134,70 @@ fn pbr(rd: Vector, p: Point, lights: &Vec<(Point, f64)>) -> Color {
     }
 
     let ambient = albedo * 0.03;
-    return ambient + lo
+    return ambient + lo;
 }
 
+fn diffuse(mut ro: Point, mut rd: Vector, p: Point) -> Color {
+    let mut col = vector![1., 0., 0.];
+    let attenuation = 0.95;
+    let bounces = 8;
+
+    let mut d = ray_march(ro, rd).abs();
+    // let mut p = r.origin + d * r.direction;
+    // let mut n = sdf_normal(&p);
+    let mut n;
+    let mut p;
+    for _ in 0..bounces {
+        if d <= MAX_DIST {
+            // issue when d = 0.0; check alignment with ray/view direction
+            p = ro + d * rd;
+            n = gradient(p);
+            // ro
+            ro = p + n * 0.01;
+            // let refl = reflect(r.direction, n);
+            let scattered = (n + random_in_unit_sphere()).normalize();
+            // r.direction = mix_vectors(refl, scattered, ks);
+            rd = scattered;
+            // r.direction = n;
+            // col = col.map(|c| c * attenuation);
+            col = col * attenuation;
+
+            d = ray_march(ro, rd).abs();
+        } else {
+            let bg = sky(rd);
+            let diffuse = vector![col[0] * bg[0], col[1] * bg[1], col[2] * bg[2]];
+            return diffuse;
+        };
+    }
+
+    return BLACK;
+}
+
+////////// Random sampling //////////
+fn random_in_unit_sphere() -> Vector {
+    // Returning a vector because it's easier for the math
+    // while loop
+    loop {
+        let p = random_vector(false);
+        if p.norm_squared() >= 1.0 {
+            continue;
+        }
+        // lambertian material normalizes
+        return p.normalize();
+    }
+}
+// return a vector with random components between -1 and 1 with optional unit vector output
+pub fn random_vector(normalize: bool) -> Vector {
+    let mut rng = rand::thread_rng();
+    let v =
+        Vector3::new(rng.gen::<f64>(), rng.gen::<f64>(), rng.gen::<f64>()).map(|i| i * 2.0 - 1.0);
+
+    if normalize {
+        return v.normalize();
+    } else {
+        return v;
+    }
+}
 
 // Fresnel Equation - Fresnel-Schlick approximation
 fn fresnel_schlick(cos_theta: f64, f0: Vector) -> Vector {
@@ -178,9 +238,9 @@ fn geometry_schlick_ggx(n_dot_v: f64, roughness: f64) -> f64 {
 }
 
 pub fn eval(p: Point) -> f64 {
-    // let s1 = sphere(p, point![0.0, -10.0, 1.0], 9.5);
-    let s2 = sphere(p, point![0.0, 0.0, 1.0], 0.75);
-    return s2;
+    let s1 = sphere(p, point![0.0, -10.0, 1.0], 9.5);
+    let s2 = sphere(p, point![0.0, 0.0, 1.0], 0.5);
+    return s1.min(s2);
 }
 
 pub fn sphere(p: Point, c: Point, r: f64) -> f64 {
@@ -217,7 +277,7 @@ pub fn ray_march(ro: Point, rd: Vector) -> f64 {
 
 pub fn sky(rd: Vector) -> Color {
     let t = 0.5 * (rd.y + 1.0);
-    t * vector![1., 1., 1.] + (1.0 - t) * vector!(0.5, 0.7, 1.0)
+    0.5 * (t * vector![1., 1., 1.] + (1.0 - t) * vector!(0.5, 0.7, 1.0))
 }
 
 pub fn save_png(pixels: Vec<Vec<Color>>, path: &str) {
