@@ -3,6 +3,7 @@ use std::f64::consts::PI;
 use image::{Rgb, RgbImage};
 use nalgebra::{distance, point, vector, Point3, Vector3};
 use rand::Rng;
+use rayon::prelude::{IntoParallelIterator, ParallelIterator, IndexedParallelIterator};
 
 // ======================================================================
 // ======================= Data types & Constants =======================
@@ -51,17 +52,17 @@ pub fn render(res_x: usize, res_y: usize) {
 
     // sampling
     let samples = 16;
-    let mut sampler = rand::thread_rng();
     let sample_scale = 1. / (samples as f64);
 
     let pixels = (0..res_x)
-        .into_iter()
+        .into_par_iter()
         .map(|x| {
             (0..res_y)
+                .into_par_iter()
                 .rev()
-                .into_iter()
                 .map(|y| {
                     let mut color = vec3(0.0);
+                    let mut sampler = rand::thread_rng();
                     for _ in 0..samples {
                         // screen space coordinates
                         let u = (x as f64 + sampler.gen::<f64>()) / res_x as f64;
@@ -76,7 +77,8 @@ pub fn render(res_x: usize, res_y: usize) {
 
                         // shading
                         if d >= MAX_DIST {
-                            color += sky(rd)
+                            // color += sky(rd)
+                            color += BLACK
                         } else {
                             // intersection point & normal
                             let p = ro + d * rd;
@@ -206,9 +208,8 @@ pub fn ray_march(ro: Point, rd: Vector) -> f64 {
 }
 
 pub fn sky(rd: Vector) -> Color {
-    // let t = 0.5 * (rd.y + 1.0);
-    // t * vector![1., 1., 1.] + (1.0 - t) * vector!(0.5, 0.7, 1.0)
-    BLACK
+    let t = 0.5 * (rd.y + 1.0);
+    t * vector![1., 1., 1.] + (1.0 - t) * vector!(0.5, 0.7, 1.0)
 }
 
 pub fn save_png(pixels: Vec<Vec<Color>>, path: &str) {
