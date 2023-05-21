@@ -38,9 +38,9 @@ pub fn render(res_x: usize, res_y: usize) {
     // light
     let lights = vec![
         // (origin, power)
-        (point![1.0, 1.0, -1.0], 8.0),
+        (point![1.0, 1.0, -1.0], 16.),
         (point![-1.0, 1.0, -1.0], 2.0),
-        (point![1.0, -1.0, -1.0], 8.0),
+        (point![0.75, 1.0, 2.0], 2.),
         (point![-1.0, -1.0, -1.0], 2.0),
     ];
 
@@ -74,9 +74,9 @@ pub fn render(res_x: usize, res_y: usize) {
                             color += sky(rd)
                         } else {
                             // intersection point & normal
-                            let p = ro + d * rd;
-                            // color += pbr(rd, p, &lights)
-                            color += diffuse(ro, rd, p)
+                            // let p = ro + d * rd;
+                            // color += pbr(ro, rd, p, &lights)
+                            color += diffuse(ro, rd)
                         }
                     }
                     color *= sample_scale;
@@ -91,10 +91,10 @@ pub fn render(res_x: usize, res_y: usize) {
 }
 
 // shading
-fn pbr(rd: Vector, p: Point, lights: &Vec<(Point, f64)>) -> Color {
+fn pbr(_ro: Point, rd: Vector, p: Point, lights: &Vec<(Point, f64)>) -> Color {
     // material parameters
     let albedo = vector![1.0, 0.0, 0.0];
-    let roughness = 0.35;
+    let roughness = 0.5;
     let metallic = 0.0;
     let mut f0 = vec3(0.04);
     f0 = mix_vectors(f0, albedo, metallic);
@@ -129,6 +129,7 @@ fn pbr(rd: Vector, p: Point, lights: &Vec<(Point, f64)>) -> Color {
 
         lo += multiply_vectors(
             multiply_vectors(kd, albedo) / PI + specular,
+            // multiply_vectors(kd, diffuse(ro, rd)) / PI + specular,
             radiance * n_dot_l,
         );
     }
@@ -137,14 +138,12 @@ fn pbr(rd: Vector, p: Point, lights: &Vec<(Point, f64)>) -> Color {
     return ambient + lo;
 }
 
-fn diffuse(mut ro: Point, mut rd: Vector, p: Point) -> Color {
+fn diffuse(mut ro: Point, mut rd: Vector) -> Color {
     let mut col = vector![1., 0., 0.];
     let attenuation = 0.95;
     let bounces = 8;
 
     let mut d = ray_march(ro, rd).abs();
-    // let mut p = r.origin + d * r.direction;
-    // let mut n = sdf_normal(&p);
     let mut n;
     let mut p;
     for _ in 0..bounces {
@@ -156,10 +155,7 @@ fn diffuse(mut ro: Point, mut rd: Vector, p: Point) -> Color {
             ro = p + n * 0.01;
             // let refl = reflect(r.direction, n);
             let scattered = (n + random_in_unit_sphere()).normalize();
-            // r.direction = mix_vectors(refl, scattered, ks);
             rd = scattered;
-            // r.direction = n;
-            // col = col.map(|c| c * attenuation);
             col = col * attenuation;
 
             d = ray_march(ro, rd).abs();
@@ -240,6 +236,7 @@ fn geometry_schlick_ggx(n_dot_v: f64, roughness: f64) -> f64 {
 pub fn eval(p: Point) -> f64 {
     let s1 = sphere(p, point![0.0, -10.0, 1.0], 9.5);
     let s2 = sphere(p, point![0.0, 0.0, 1.0], 0.5);
+    // let s3 = sphere(p, point![0.75, -0.5, 2.0], 0.1);
     return s1.min(s2);
 }
 
