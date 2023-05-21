@@ -1,8 +1,8 @@
-use core::num;
 use std::f64::consts::PI;
 
 use image::{Rgb, RgbImage};
 use nalgebra::{distance, point, vector, Point3, Vector3};
+use rand::Rng;
 
 // ======================================================================
 // ======================= Data types & Constants =======================
@@ -44,10 +44,15 @@ pub fn render(res_x: usize, res_y: usize) {
     let light_power = 2.0;
     // material
     let albedo = vector![1.0, 0.0, 0.0];
-    let roughness = 0.96;
-    let metallic = 0.40;
+    let roughness = 0.35;
+    let metallic = 0.0;
     let mut f0 = vec3(0.04);
     f0 = mix_vectors(f0, albedo, metallic);
+
+    // sampling
+    let samples = 16;
+    let mut sampler = rand::thread_rng();
+    let sample_scale = 1. / (samples as f64);
 
     let pixels = (0..res_x)
         .into_iter()
@@ -56,62 +61,66 @@ pub fn render(res_x: usize, res_y: usize) {
                 .rev()
                 .into_iter()
                 .map(|y| {
-                    // screen space coordinates
-                    let u = x as f64 / res_x as f64;
-                    let v = y as f64 / res_y as f64;
+                    let mut color = vec3(0.0);
+                    for _ in 0..samples {
+                        // screen space coordinates
+                        let u = (x as f64 + sampler.gen::<f64>()) / res_x as f64;
+                        let v = (y as f64 + sampler.gen::<f64>()) / res_y as f64;
 
-                    // ray direction
-                    let rd = (lower_left_corner + u * horizontal + v * vertical - ro).normalize();
+                        // ray direction
+                        let rd =
+                            (lower_left_corner + u * horizontal + v * vertical - ro).normalize();
 
-                    // ray marching
-                    let d = ray_march(ro, rd);
+                        // ray marching
+                        let d = ray_march(ro, rd);
 
-                    // shading
-                    if d >= MAX_DIST {
-                        sky(rd)
-                    } else {
-                        // intersection point & normal
-                        let p = ro + d * rd;
-                        let n = gradient(p);
-                        
-                        let mut lo = vec3(0.0);
-                        for light_pos in &lights {
-                            // reflectance equation
-                            // radiance
-                            let v = -rd;
-                            let l = (light_pos - p).normalize();
-                            let h = (v + l).normalize();
-                            let dist = (light_pos - p).norm();
-                            let attenuation = 1.0 / (dist * dist);
-                            let radiance = vec3(1.0) * attenuation * light_power;
+                        // shading
+                        if d >= MAX_DIST {
+                            color += sky(rd)
+                        } else {
+                            // intersection point & normal
+                            let p = ro + d * rd;
+                            let n = gradient(p);
 
-                            // brdf (cook-torrance)
-                            let ndf = distribution_ggx(n, h, roughness);
-                            let g = geometry_smith(n, v, l, roughness);
-                            let f = fresnel_schlick(h.dot(&v).max(0.0), f0);
+                            let mut lo = vec3(0.0);
+                            for light_pos in &lights {
+                                // reflectance equation
+                                // radiance
+                                let v = -rd;
+                                let l = (light_pos - p).normalize();
+                                let h = (v + l).normalize();
+                                let dist = (light_pos - p).norm();
+                                let attenuation = 1.0 / (dist * dist);
+                                let radiance = vec3(1.0) * attenuation * light_power;
 
-                            let ks = f;
-                            let kd = (vec3(1.0) - ks) * (1.0 - metallic);
+                                // brdf (cook-torrance)
+                                let ndf = distribution_ggx(n, h, roughness);
+                                let g = geometry_smith(n, v, l, roughness);
+                                let f = fresnel_schlick(h.dot(&v).max(0.0), f0);
 
-                            let numerator = ndf * g * f;
-                            
-                            let n_dot_l = n.dot(&l).max(0.0);
-                            let denomenator =
-                                4.0 * n.dot(&v).max(0.0) * n_dot_l + 0.0001;
+                                let ks = f;
+                                let kd = (vec3(1.0) - ks) * (1.0 - metallic);
 
-                            let specular = numerator / denomenator;
+                                let numerator = ndf * g * f;
 
-                            lo += multiply_vectors(
-                                multiply_vectors(kd, albedo) / PI + specular,
-                                radiance * n_dot_l,
-                            );
+                                let n_dot_l = n.dot(&l).max(0.0);
+                                let denomenator = 4.0 * n.dot(&v).max(0.0) * n_dot_l + 0.0001;
+
+                                let specular = numerator / denomenator;
+
+                                lo += multiply_vectors(
+                                    multiply_vectors(kd, albedo) / PI + specular,
+                                    radiance * n_dot_l,
+                                );
+                            }
+
+                            let ambient = albedo * 0.03;
+                            color += ambient + lo;
+
                         }
-
-                        let ambient = albedo * 0.03;
-                        let mut color = ambient + lo;
-                        color = gamma_correct(color);
-                        color
                     }
+                    color *= sample_scale;
+                    gamma_correct(color)
                 })
                 .collect::<Vec<Color>>()
         })
@@ -160,7 +169,7 @@ fn geometry_schlick_ggx(n_dot_v: f64, roughness: f64) -> f64 {
 
 pub fn eval(p: Point) -> f64 {
     // let s1 = sphere(p, point![0.0, -10.0, 1.0], 9.5);
-    let s2 = sphere(p, point![0.0, 0.0, 1.0], 0.5);
+    let s2 = sphere(p, point![0.0, 0.0, 1.0], 0.75);
     return s2;
 }
 
@@ -223,7 +232,7 @@ pub fn save_png(pixels: Vec<Vec<Color>>, path: &str) {
 }
 
 ////////// Colors //////////
- 
+
 fn gamma_correct(mut color: Color) -> Color {
     color = divide_vectors(color, color + vec3(1.0));
     powf_vector(color, 1.0 / 2.2)

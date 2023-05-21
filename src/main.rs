@@ -1,5 +1,5 @@
 use tinymarch::render;
 
 fn main() {
-    render(720, 512);
+    render(1080, 1080);
 }
