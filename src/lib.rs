@@ -1,8 +1,10 @@
+use core::num;
 use std::env;
 use std::f64::consts::PI;
 
-use image::{DynamicImage, GenericImageView, Rgb, RgbImage};
 use image::io::Reader as ImageReader;
+use image::ImageBuffer;
+use image::{codecs::hdr, DynamicImage, GenericImageView, Rgb, RgbImage};
 use nalgebra::{distance, point, vector, Point3, Vector3};
 use rand::Rng;
 use rayon::prelude::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
@@ -47,10 +49,13 @@ pub fn render(res_x: usize, res_y: usize, samples: usize) {
         (point![-1.0, -1.0, -1.0], 2.0),
     ];
     // environment texture
-    let env = ImageReader::open("canary_wharf_4k.png")
+    let env = ImageReader::open("canary_wharf_4k.hdr")
         .expect("Could not load image.")
         .decode()
         .unwrap();
+
+    println!("{:?}", env.get_pixel(100, 100));
+    // create_ir_map(&env);
     // sampling
     let sample_scale = 1. / (samples as f64);
 
@@ -83,12 +88,11 @@ pub fn render(res_x: usize, res_y: usize, samples: usize) {
                             // intersection point & normal
                             let p = ro + d * rd;
                             // color += pbr(ro, rd, p, &lights)
-                            color += pbr_env(ro, rd, p, &lights, &env); 
+                            color += _pbr_env(ro, rd, p, &lights, &env);
                             // color += diffuse(ro, rd, &env)
                         }
                     }
                     color *= sample_scale;
-                    // color
                     gamma_correct(color)
                 })
                 .collect::<Vec<Color>>()
@@ -99,7 +103,7 @@ pub fn render(res_x: usize, res_y: usize, samples: usize) {
 }
 
 // shading
-fn pbr(_ro: Point, rd: Vector, p: Point, lights: &Vec<(Point, f64)>) -> Color {
+fn _pbr(_ro: Point, rd: Vector, p: Point, lights: &Vec<(Point, f64)>) -> Color {
     // material parameters
     let albedo = vector![1.0, 0.0, 0.0];
     let roughness = 0.5;
@@ -146,7 +150,13 @@ fn pbr(_ro: Point, rd: Vector, p: Point, lights: &Vec<(Point, f64)>) -> Color {
     return ambient + lo;
 }
 
-fn pbr_env(ro: Point, rd: Vector, p: Point, lights: &Vec<(Point, f64)>, env: &DynamicImage) -> Color {
+fn _pbr_env(
+    ro: Point,
+    rd: Vector,
+    p: Point,
+    lights: &Vec<(Point, f64)>,
+    env: &DynamicImage,
+) -> Color {
     // material parameters
     let albedo = vector![1.0, 0.0, 0.0];
     let roughness = 0.5;
@@ -169,7 +179,7 @@ fn pbr_env(ro: Point, rd: Vector, p: Point, lights: &Vec<(Point, f64)>, env: &Dy
     c
 }
 
-fn diffuse(mut ro: Point, mut rd: Vector, env: &DynamicImage) -> Color {
+fn _diffuse(mut ro: Point, mut rd: Vector, env: &DynamicImage) -> Color {
     let mut col = vector![1., 0.5, 0.5];
     let attenuation = 0.6;
     let bounces = 12;
@@ -193,7 +203,7 @@ fn diffuse(mut ro: Point, mut rd: Vector, env: &DynamicImage) -> Color {
             // let bg = sky(rd);
             let bg = envmap(rd, env);
             // println!("{:?}", bg);
-            
+
             let diffuse = vector![col[0] * bg[0], col[1] * bg[1], col[2] * bg[2]];
             return diffuse;
         };
@@ -322,6 +332,54 @@ pub fn envmap(v: Vector, map: &DynamicImage) -> Color {
     // u = (u - 0.25) % 1.;
     let c = get_uv_pixel(map, u, v).map(|p| p / 255.);
     c
+}
+
+pub fn create_ir_map(map: &DynamicImage) -> () {
+    let x_res: u32 = 480;
+    let y_res: u32 = 300;
+    let mut ir_map = RgbImage::new(x_res, y_res);
+    let sample_delta = 0.025;
+    let phi_samples = (TAU / sample_delta).floor() as usize;
+    let theta_samples = ((PI / 2.0) / sample_delta).floor() as usize;
+    let num_samples = (phi_samples * theta_samples) as f64;
+
+    for (x, y, pixel) in ir_map.enumerate_pixels_mut() {
+
+        let normal = vector![x as f64, y as f64, 1.].normalize();
+
+        let mut irradiance = vec3(0.0);
+        let mut up = vector![0., 1., 0.];
+        let right = up.cross(&normal);
+        up = normal.cross(&right);
+        let mut phi: f64 = 0.0;
+        let mut theta: f64 = 0.0;
+
+        for _ in 0..phi_samples {
+            for _ in 0..theta_samples {
+                // spherical to cartesian (in tangent space)
+                let tan_sample = vector![theta.sin() * phi.cos(), theta.sin() * phi.sin(), theta.cos()];
+
+                // tangent space to world
+                let sample_vec = tan_sample.x * right + tan_sample.x * up + tan_sample.z * normal;
+                let map_val = map.get_pixel(sample_vec.x as u32, sample_vec.y as u32);
+                let sin_cos = theta.sin() * theta.cos();
+                irradiance += vector![
+                    map_val[0] as f64 * sin_cos,
+                    map_val[1] as f64 * sin_cos,
+                    map_val[2] as f64 * sin_cos
+                ];
+                
+            }
+        }
+        println!("{:?}", irradiance);
+
+        *pixel = image::Rgb([
+            (irradiance.x / num_samples).floor() as u8,
+            (irradiance.y / num_samples).floor() as u8,
+            (irradiance.z / num_samples).floor() as u8
+        ]);
+    }
+    ir_map.save("ir_map.png");
 }
 
 pub fn spherical_map(v: &Vector) -> (f64, f64) {
