@@ -1,6 +1,8 @@
+use std::env;
 use std::f64::consts::PI;
 
-use image::{Rgb, RgbImage};
+use image::{DynamicImage, GenericImageView, Rgb, RgbImage};
+use image::io::Reader as ImageReader;
 use nalgebra::{distance, point, vector, Point3, Vector3};
 use rand::Rng;
 use rayon::prelude::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
@@ -16,6 +18,7 @@ pub type Color = Vector3<f64>;
 pub const MAX_STEPS: usize = 1000;
 pub const MAX_DIST: f64 = 1000.;
 pub const SURF_DIST: f64 = 0.001;
+pub const TAU: f64 = PI * 2.0;
 
 pub const BLACK: Color = vector![0.0, 0.0, 0.0];
 pub const WHITE: Color = vector![1.0, 1.0, 1.0];
@@ -23,7 +26,7 @@ pub const RED: Color = vector![1.0, 0.0, 0.0];
 pub const GREEN: Color = vector![0.0, 1.0, 0.0];
 pub const BLUE: Color = vector![0.0, 0.0, 1.0];
 
-pub fn render(res_x: usize, res_y: usize) {
+pub fn render(res_x: usize, res_y: usize, samples: usize) {
     let ro = point![0., 0., -1.];
     let viewport_width = 1.0;
     let viewport_height = res_y as f64 / res_x as f64;
@@ -35,17 +38,20 @@ pub fn render(res_x: usize, res_y: usize) {
     let lower_left_corner =
         ro - 0.5 * horizontal - 0.5 * vertical - vector![0.0, 0.0, -focal_length];
 
-    // light
+    // light & environment
     let lights = vec![
         // (origin, power)
         (point![1.0, 1.0, -1.0], 16.),
         (point![-1.0, 1.0, -1.0], 2.0),
-        (point![0.75, 1.0, 2.0], 2.),
+        (point![1.0, 1.0, -1.0], 2.),
         (point![-1.0, -1.0, -1.0], 2.0),
     ];
-
+    // environment texture
+    let env = ImageReader::open("canary_wharf_4k.png")
+        .expect("Could not load image.")
+        .decode()
+        .unwrap();
     // sampling
-    let samples = 16;
     let sample_scale = 1. / (samples as f64);
 
     let pixels = (0..res_x)
@@ -71,12 +77,14 @@ pub fn render(res_x: usize, res_y: usize) {
 
                         // shading
                         if d >= MAX_DIST {
-                            color += sky(rd)
+                            // color += sky(rd);
+                            color += envmap(rd, &env);
                         } else {
                             // intersection point & normal
-                            // let p = ro + d * rd;
+                            let p = ro + d * rd;
                             // color += pbr(ro, rd, p, &lights)
-                            color += diffuse(ro, rd)
+                            color += pbr_env(ro, rd, p, &lights, &env); 
+                            // color += diffuse(ro, rd, &env)
                         }
                     }
                     color *= sample_scale;
@@ -138,17 +146,39 @@ fn pbr(_ro: Point, rd: Vector, p: Point, lights: &Vec<(Point, f64)>) -> Color {
     return ambient + lo;
 }
 
-fn diffuse(mut ro: Point, mut rd: Vector) -> Color {
-    let mut col = vector![1., 0., 0.];
-    let attenuation = 0.95;
-    let bounces = 8;
+fn pbr_env(ro: Point, rd: Vector, p: Point, lights: &Vec<(Point, f64)>, env: &DynamicImage) -> Color {
+    // material parameters
+    let albedo = vector![1.0, 0.0, 0.0];
+    let roughness = 0.5;
+    let metallic = 0.0;
+    let mut f0 = vec3(0.04);
+    f0 = mix_vectors(f0, albedo, metallic);
+
+    let n = gradient(p);
+    let v = (ro - p).normalize();
+    let r = reflect(-v, n);
+
+    let f = fresnel_schlick_roughness(n.dot(&v).max(0.0), f0, roughness);
+
+    let ks = f;
+    let kd = (vec3(1.0) - ks) * (1.0 - metallic);
+
+    let c = envmap(r, env);
+    // let irradiance = Irradiance(N);
+    // let diffuse = irradiance * albedo;
+    c
+}
+
+fn diffuse(mut ro: Point, mut rd: Vector, env: &DynamicImage) -> Color {
+    let mut col = vector![1., 0.5, 0.5];
+    let attenuation = 0.6;
+    let bounces = 12;
 
     let mut d = ray_march(ro, rd).abs();
     let mut n;
     let mut p;
     for _ in 0..bounces {
         if d <= MAX_DIST {
-            // issue when d = 0.0; check alignment with ray/view direction
             p = ro + d * rd;
             n = gradient(p);
             // ro
@@ -160,7 +190,10 @@ fn diffuse(mut ro: Point, mut rd: Vector) -> Color {
 
             d = ray_march(ro, rd).abs();
         } else {
-            let bg = sky(rd);
+            // let bg = sky(rd);
+            let bg = envmap(rd, env);
+            // println!("{:?}", bg);
+            
             let diffuse = vector![col[0] * bg[0], col[1] * bg[1], col[2] * bg[2]];
             return diffuse;
         };
@@ -198,6 +231,10 @@ pub fn random_vector(normalize: bool) -> Vector {
 // Fresnel Equation - Fresnel-Schlick approximation
 fn fresnel_schlick(cos_theta: f64, f0: Vector) -> Vector {
     f0 + (vec3(1.0) - f0) * clamp(1.0 - cos_theta, 0.0, 1.0).powf(5.0)
+}
+
+fn fresnel_schlick_roughness(cos_theta: f64, f0: Vector, roughness: f64) -> Vector {
+    f0 + (vector_max(vec3(1.0) - f0, f0)) * clamp(1.0 - cos_theta, 0.0, 1.0).powf(5.0)
 }
 
 // Normal Distribution Function
@@ -238,6 +275,7 @@ pub fn eval(p: Point) -> f64 {
     let s2 = sphere(p, point![0.0, 0.0, 1.0], 0.5);
     // let s3 = sphere(p, point![0.75, -0.5, 2.0], 0.1);
     return s1.min(s2);
+    // s2
 }
 
 pub fn sphere(p: Point, c: Point, r: f64) -> f64 {
@@ -272,9 +310,40 @@ pub fn ray_march(ro: Point, rd: Vector) -> f64 {
     return d;
 }
 
+// Environment
 pub fn sky(rd: Vector) -> Color {
     let t = 0.5 * (rd.y + 1.0);
     0.5 * (t * vector![1., 1., 1.] + (1.0 - t) * vector!(0.5, 0.7, 1.0))
+}
+
+pub fn envmap(v: Vector, map: &DynamicImage) -> Color {
+    // still overlapping/repeating somehow
+    let (u, v) = spherical_map(&v);
+    // u = (u - 0.25) % 1.;
+    let c = get_uv_pixel(map, u, v).map(|p| p / 255.);
+    c
+}
+
+pub fn spherical_map(v: &Vector) -> (f64, f64) {
+    // http://raytracerchallenge.com/bonus/texture-mapping.html
+
+    let r = v.norm();
+    let theta = (v.x / v.z).atan();
+    let phi = (v.y / r).acos();
+    let raw_u = theta / TAU;
+    let u = 1. - (raw_u + 0.5);
+    let v = phi / PI;
+
+    (u, v)
+}
+
+pub fn get_uv_pixel(image: &DynamicImage, u: f64, v: f64) -> Color {
+    // return the pixel of an image at uv coordinates
+    let i = (u * image.width() as f64).floor() as u32;
+    let j = (v * image.height() as f64).floor() as u32;
+    let c = image.get_pixel(i, j);
+
+    vector![c[0] as f64, c[1] as f64, c[2] as f64]
 }
 
 pub fn save_png(pixels: Vec<Vec<Color>>, path: &str) {
@@ -311,12 +380,21 @@ pub fn vec3(a: f64) -> Vector {
     vector![a, a, a]
 }
 
+//reflect an input vector about another (the sdf surface normal)
+pub fn reflect(v: Vector, normal: Vector) -> Vector {
+    return v - normal * 2.0 * v.dot(&normal);
+}
+
 pub fn mix_vectors(v1: Vector, v2: Vector, t: f64) -> Vector {
     vector![
         lerp(v1.x, v2.x, t),
         lerp(v1.y, v2.y, t),
         lerp(v1.z, v2.z, t)
     ]
+}
+
+pub fn vector_max(v1: Vector, v2: Vector) -> Vector {
+    vector![v1.x.max(v2.x), v1.y.max(v2.y), v1.z.max(v2.z)]
 }
 
 pub fn multiply_vectors(v1: Vector, v2: Vector) -> Vector {
