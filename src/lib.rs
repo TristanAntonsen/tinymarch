@@ -53,8 +53,11 @@ pub fn render(res_x: usize, res_y: usize, samples: usize) {
         .expect("Could not load image.")
         .decode()
         .unwrap();
+    // let irmap = ImageReader::open("fake_ir_map.png")
+    //     .expect("Could not load image.")
+    //     .decode()
+    //     .unwrap();
 
-    println!("{:?}", env.get_pixel(100, 100));
     // create_ir_map(&env);
     // sampling
     let sample_scale = 1. / (samples as f64);
@@ -87,8 +90,8 @@ pub fn render(res_x: usize, res_y: usize, samples: usize) {
                         } else {
                             // intersection point & normal
                             let p = ro + d * rd;
-                            // color += pbr(ro, rd, p, &lights)
-                            color += _pbr_env(ro, rd, p, &lights, &env);
+                            color += _pbr(ro, rd, p, &lights)
+                            // color += _pbr_env(ro, rd, p, &lights, &env, &irmap);
                             // color += diffuse(ro, rd, &env)
                         }
                     }
@@ -156,6 +159,7 @@ fn _pbr_env(
     p: Point,
     lights: &Vec<(Point, f64)>,
     env: &DynamicImage,
+    irmap: &DynamicImage,
 ) -> Color {
     // material parameters
     let albedo = vector![1.0, 0.0, 0.0];
@@ -174,9 +178,9 @@ fn _pbr_env(
     let kd = (vec3(1.0) - ks) * (1.0 - metallic);
 
     let c = envmap(r, env);
-    // let irradiance = Irradiance(N);
-    // let diffuse = irradiance * albedo;
-    c
+    let irradiance = envmap(r, irmap);
+    let diffuse = multiply_vectors(irradiance, albedo);
+    diffuse
 }
 
 fn _diffuse(mut ro: Point, mut rd: Vector, env: &DynamicImage) -> Color {
@@ -371,7 +375,6 @@ pub fn create_ir_map(map: &DynamicImage) -> () {
                 
             }
         }
-        println!("{:?}", irradiance);
 
         *pixel = image::Rgb([
             (irradiance.x / num_samples).floor() as u8,
