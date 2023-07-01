@@ -90,9 +90,9 @@ pub fn render(res_x: usize, res_y: usize, samples: usize) {
                         } else {
                             // intersection point & normal
                             let p = ro + d * rd;
-                            // color += _pbr(ro, rd, p, &lights)
-                            color += _pbr_env(ro, rd, p, &lights, &env, &irmap);
-                            // color += diffuse(ro, rd, &env)
+                            color += _pbr(ro, rd, p, &lights)
+                            // color += _pbr_env(ro, rd, p, &lights, &env, &irmap);
+                            // color += _diffuse(ro, rd, &env)
                         }
                     }
                     color *= sample_scale;
