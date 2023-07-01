@@ -53,10 +53,10 @@ pub fn render(res_x: usize, res_y: usize, samples: usize) {
         .expect("Could not load image.")
         .decode()
         .unwrap();
-    // let irmap = ImageReader::open("fake_ir_map.png")
-    //     .expect("Could not load image.")
-    //     .decode()
-    //     .unwrap();
+    let irmap = ImageReader::open("fake_ir_map.png")
+        .expect("Could not load image.")
+        .decode()
+        .unwrap();
 
     // create_ir_map(&env);
     // sampling
@@ -90,8 +90,8 @@ pub fn render(res_x: usize, res_y: usize, samples: usize) {
                         } else {
                             // intersection point & normal
                             let p = ro + d * rd;
-                            color += _pbr(ro, rd, p, &lights)
-                            // color += _pbr_env(ro, rd, p, &lights, &env, &irmap);
+                            // color += _pbr(ro, rd, p, &lights)
+                            color += _pbr_env(ro, rd, p, &lights, &env, &irmap);
                             // color += diffuse(ro, rd, &env)
                         }
                     }
@@ -179,8 +179,17 @@ fn _pbr_env(
 
     let c = envmap(r, env);
     let irradiance = envmap(r, irmap);
-    let diffuse = multiply_vectors(irradiance, albedo);
-    diffuse
+    let diffuse = multiply_vectors(irradiance, c);
+
+
+
+    let lo = multiply_vectors(
+        multiply_vectors(kd, albedo) / PI,
+        // multiply_vectors(kd, diffuse(ro, rd)) / PI + specular,
+        irradiance,
+    );
+
+    lo
 }
 
 fn _diffuse(mut ro: Point, mut rd: Vector, env: &DynamicImage) -> Color {
