@@ -75,7 +75,6 @@ pub fn render(res_x: usize, res_y: usize, samples: usize) {
                         }
                     }
                     color *= sample_scale;
-                    // gamma_correct(color); // only if PBR shading
                     color
                 })
                 .collect::<Vec<Color>>()
@@ -108,6 +107,20 @@ fn ray_direction(uv: (f64, f64), ro: Point, rt: Point, res: (usize, usize)) -> V
     return rd.normalize();
 }
 
+pub fn ray_march(ro: Point, rd: Vector) -> f64 {
+    let mut d = 0.0;
+
+    for _ in 0..MAX_STEPS {
+        let p = ro + rd * d;
+        let ds = eval(p);
+        d += ds;
+        if d >= MAX_DIST || ds < SURF_DIST {
+            break;
+        }
+    }
+    return d;
+}
+
 fn simple_shading(p: Point, rd: Vector) -> Color {
     let n = gradient(p);
     let mut color = vector![0.2,0.8,1.];
@@ -120,96 +133,19 @@ fn simple_shading(p: Point, rd: Vector) -> Color {
 
     // fake fresnel
     let n_dot_v = n.dot(&rd) + 1.;
-    color += vec3(n_dot_v * n_dot_v * 0.45);
+    let fresnel = n_dot_v * n_dot_v * 0.45;
+    
+    // Specular highlights
+    let r = reflect(vector![1., 0., 0.].normalize(), n);
+    // vec3 R = reflect(normalize(vec3(1.,0.,0.)), N);
+    // let specular = vec3(1.0) * pow(max(dot(R, rd), 0.0),10.0);
+    let specular = vec3(1.0) * r.dot(&rd).max(0.0).powf(10.0) * 0.08;
+
+    color += vec3(fresnel);
+    color += specular;
 
     return color;
 
-}
-
-// shading
-fn shading(_ro: Point, rd: Vector, p: Point, lights: &Vec<(Point, f64)>) -> Color {
-    // material parameters
-    let albedo = vector![1.0, 0.0, 0.0];
-    let roughness = 0.5;
-    let metallic = 0.0;
-    let mut f0 = vec3(0.04);
-    f0 = mix_vectors(f0, albedo, metallic);
-
-    let n = gradient(p);
-
-    let mut lo = vec3(0.0);
-    for light in lights {
-        // reflectance equation
-        // radiance
-        let v = -rd;
-        let l = (light.0 - p).normalize();
-        let h = (v + l).normalize();
-        let dist = (light.0 - p).norm();
-        let attenuation = 1.0 / (dist * dist);
-        let radiance = vec3(1.0) * attenuation * light.1;
-
-        // brdf (cook-torrance)
-        let ndf = distribution_ggx(n, h, roughness);
-        let g = geometry_smith(n, v, l, roughness);
-        let f = fresnel_schlick(h.dot(&v).max(0.0), f0);
-
-        let ks = f;
-        let kd = (vec3(1.0) - ks) * (1.0 - metallic);
-
-        let numerator = ndf * g * f;
-
-        let n_dot_l = n.dot(&l).max(0.0);
-        let denomenator = 4.0 * n.dot(&v).max(0.0) * n_dot_l + 0.0001;
-
-        let specular = numerator / denomenator;
-
-        lo += multiply_vectors(
-            multiply_vectors(kd, albedo) / PI + specular,
-            // multiply_vectors(kd, diffuse(ro, rd)) / PI + specular,
-            radiance * n_dot_l,
-        );
-    }
-
-    let ambient = albedo * 0.03;
-    return ambient + lo;
-}
-
-// Fresnel Equation - Fresnel-Schlick approximation
-fn fresnel_schlick(cos_theta: f64, f0: Vector) -> Vector {
-    f0 + (vec3(1.0) - f0) * clamp(1.0 - cos_theta, 0.0, 1.0).powf(5.0)
-}
-
-// Normal Distribution Function
-fn distribution_ggx(n: Vector, h: Vector, roughness: f64) -> f64 {
-    let a = roughness * roughness;
-    let a2 = a * a;
-    let n_dot_h = n.dot(&h).max(0.0);
-    let n_dot_h2 = n_dot_h * n_dot_h;
-
-    let num = a2;
-    let mut denom = n_dot_h2 * (a2 - 1.0) + 1.0;
-    denom = PI * denom * denom;
-
-    return num / denom;
-}
-
-// Geometry Function
-fn geometry_smith(n: Vector, v: Vector, l: Vector, roughness: f64) -> f64 {
-    let n_dot_v = n.dot(&v).max(0.0);
-    let n_dot_l = n.dot(&l).max(0.0);
-    let ggx2 = geometry_schlick_ggx(n_dot_v, roughness);
-    let ggx1 = geometry_schlick_ggx(n_dot_l, roughness);
-
-    ggx1 * ggx2
-}
-// Geometry Schlick GGX
-fn geometry_schlick_ggx(n_dot_v: f64, roughness: f64) -> f64 {
-    let r = roughness + 1.0;
-    let k = r * r / 8.0;
-    let num = n_dot_v;
-    let denom = n_dot_v * (1.0 - k) + k;
-
-    num / denom
 }
 
 pub fn eval(p: Point) -> f64 {
@@ -238,20 +174,6 @@ pub fn gradient(p: Point) -> Vector {
     let ddz = eval(p + dz) - eval(p - dz);
 
     vector![ddx, ddy, ddz].normalize()
-}
-
-pub fn ray_march(ro: Point, rd: Vector) -> f64 {
-    let mut d = 0.0;
-
-    for _ in 0..MAX_STEPS {
-        let p = ro + rd * d;
-        let ds = eval(p);
-        d += ds;
-        if d >= MAX_DIST || ds < SURF_DIST {
-            break;
-        }
-    }
-    return d;
 }
 
 // Environment
@@ -283,13 +205,6 @@ pub fn save_png(pixels: Vec<Vec<Color>>, path: &str) {
     println!("{} exported.", path);
 
     img.save(path).expect("Could not save png");
-}
-
-////////// Colors //////////
-
-fn gamma_correct(mut color: Color) -> Color {
-    color = divide_vectors(color, color + vec3(1.0));
-    powf_vector(color, 1.0 / 2.2)
 }
 
 ////////// Vectors //////////
