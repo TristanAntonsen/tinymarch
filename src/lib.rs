@@ -66,7 +66,7 @@ pub fn render(res_x: usize, res_y: usize, samples: usize) {
 
                         // shading
                         if d >= MAX_DIST {
-                            color += sky(rd);
+                            color += sky((u, v));
                         } else {
                             // intersection point & normal
                             let p = ro + d * rd;
@@ -208,8 +208,8 @@ fn geometry_schlick_ggx(n_dot_v: f64, roughness: f64) -> f64 {
 }
 
 pub fn eval(p: Point) -> f64 {
-    let s1 = sphere(p, point![0.0, 0.0, 0.0], 0.5);
-    let s2 = sphere(p, point![0.5, -0.3, -0.5], 0.45);
+    let s1 = sphere(p, point![0.0, 0.0, 0.0], 1.);
+    let s2 = sphere(p, point![1., -0.6, -1.], 0.9);
     return boolean_subtraction(s1, s2);
 }
 
@@ -250,11 +250,12 @@ pub fn ray_march(ro: Point, rd: Vector) -> f64 {
 }
 
 // Environment
-pub fn sky(rd: Vector) -> Color {
-    let t = 0.5 * (rd.y + 1.0);
-    0.5 * (t * vector![1., 1., 1.] + (1.0 - t) * vector!(0.5, 0.7, 1.0))
+pub fn sky(uv: (f64, f64)) -> Color {
+    // Background 
+    let v = vector![uv.0, uv.1].norm() * 0.75;
 
-    
+    return vec3(lerp(0.1, 0.2, uv.1))
+    // let fragColor = vec4f(mix(0.1, 0.2, smoothstep(0.0, 1.0, uv.y)));
 }
 
 pub fn save_png(pixels: Vec<Vec<Color>>, path: &str) {
