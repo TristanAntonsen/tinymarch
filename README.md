@@ -49,7 +49,9 @@ pub const SURF_DIST: f64 = 0.0001;  // SDF value that registers a "hit"
 pub const STEP_SCALE: f64 = 1.0;    // Modified step scale to help prevent artifacts (<=1)
 ```
 ---
+Some primitive shapes:
 ![Primitives](./img/primitives.png)
+Linear interpolation between a sphere and a box:
 ![Mixed](./img/mix.png)
 ---
 Most of the distance functions are based on Inigo Quilez's (iq) shaders & functions https://iquilezles.org/.
