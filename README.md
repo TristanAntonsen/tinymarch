@@ -14,6 +14,7 @@ fn eval(p) -> f64 {
     return _smooth_subtraction(s1, s2, 0.05);
 }
 ```
+---
 
 ![Banner](./cut_sphere.png)
 
@@ -27,9 +28,9 @@ pub const MAX_DIST: f64 = 100.;     // Maximum distance for ray marching
 pub const SURF_DIST: f64 = 0.0001;  // SDF value that registers a "hit"
 pub const STEP_SCALE: f64 = 1.0;    // Modified step scale to help prevent artifacts (<=1)
 ```
-
 ---
-
+![Primitives](./primitives.png)
+![Mixed](./mix.png)
 
 Most of the distance functions based on Inigo Quilez's (iq) shaders & functions https://iquilezles.org/.
 
