@@ -1,5 +1,7 @@
 # Tinymarch
-## A small ray marcher written in Rust
+## A Small CPU Ray Marcher Written in Rust
+
+Multi-threaded using [Rayon](https://docs.rs/rayon/latest/rayon/)
 
 Reworked to mirror structure of my [shadertoy ray marcher](https://www.shadertoy.com/view/dtXfzM).
 
@@ -25,7 +27,6 @@ pub const MAX_DIST: f64 = 100.;     // Maximum distance for ray marching
 pub const SURF_DIST: f64 = 0.0001;  // SDF value that registers a "hit"
 pub const STEP_SCALE: f64 = 1.0;    // Modified step scale to help prevent artifacts (<=1)
 ```
-
 
 ---
 
