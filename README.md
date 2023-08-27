@@ -8,7 +8,7 @@ Reworked to mirror structure of my [Shadertoy ray marcher](https://www.shadertoy
 ---
 ### About Ray Marching
 
-Ray marching is a rendering technique similar to ray tracing that relies on a different method of finding the intersection between the ray and rendered geometry. This method is usually used to render geometry created with Signed Distance Fields (SDFs) rather than polygons.
+Ray marching is a rendering technique similar to ray tracing that relies on a different method of finding the intersection between the ray and rendered geometry. This method is usually used to render geometry created with Signed Distance Fields (SDFs) rather than polygons. SDFs are awesome because you can perform all sorts of displacement, mixing, and boolean operations without worrying about triangle intersections.
 
 Originating from the camera, each ray "marches" through the scene, evaluating the SDF at each step to determine how far it can safely travel without running into anything. See my [Shadertoy demo](https://www.shadertoy.com/view/cssfWs) for a 2D breakdown of how it works.
 
