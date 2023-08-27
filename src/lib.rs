@@ -136,8 +136,7 @@ fn simple_shading(p: Point, rd: Vector) -> Color {
     
     // Specular highlights
     let r = reflect(vector![1., 0., 0.].normalize(), n);
-    // vec3 R = reflect(normalize(vec3(1.,0.,0.)), N);
-    // let specular = vec3(1.0) * pow(max(dot(R, rd), 0.0),10.0);
+
     let specular = vec3(1.0) * r.dot(&rd).max(0.0).powf(10.0) * 0.08;
 
     color += vec3(fresnel);
