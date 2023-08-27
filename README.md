@@ -51,14 +51,13 @@ pub const STEP_SCALE: f64 = 1.0;    // Modified step scale to help prevent artif
 ---
 ![Primitives](./img/primitives.png)
 ![Mixed](./img/mix.png)
-
-Most of the distance functions based on Inigo Quilez's (iq) shaders & functions https://iquilezles.org/.
+---
+Most of the distance functions are based on Inigo Quilez's (iq) shaders & functions https://iquilezles.org/.
 
 (Learning from the mistakes of an over-engineered version that didn't work as well)
-
 
 References
 - https://learnopengl.com/PBR/Lighting
 - https://iquilezles.org/articles/distfunctions/
 - https://www.youtube.com/watch?v=PGtv-dBi2wE
-- https://www.shadertoy.com/view/7djcDz
+- https://www.youtube.com/watch?v=BNZtUB7yhX4
