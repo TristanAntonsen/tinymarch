@@ -1,7 +1,7 @@
-use std::{f64::consts::PI, ops::Mul};
+use std::f64::consts::PI;
 
 use image::{Rgb, RgbImage};
-use nalgebra::{distance, point, vector, Point3, Vector3, Matrix3};
+use nalgebra::{distance, point, vector, Point3, Vector3};
 use rand::Rng;
 use rayon::prelude::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 
@@ -13,10 +13,11 @@ pub type Point = Point3<f64>;
 pub type Vector = Vector3<f64>;
 pub type Color = Vector3<f64>;
 
-pub const MAX_STEPS: usize = 1000;
-pub const MAX_DIST: f64 = 1000.;
-pub const SURF_DIST: f64 = 0.001;
+pub const MAX_STEPS: usize = 500;
+pub const MAX_DIST: f64 = 100.;
+pub const SURF_DIST: f64 = 0.0001;
 pub const TAU: f64 = PI * 2.0;
+pub const STEP_SCALE: f64 = 1.0;
 
 pub const BLACK: Color = vector![0.0, 0.0, 0.0];
 pub const WHITE: Color = vector![1.0, 1.0, 1.0];
@@ -31,15 +32,6 @@ pub const BLUE: Color = vector![0.0, 0.0, 1.0];
 pub fn render(res_x: usize, res_y: usize, samples: usize) {
     let ro = point![0., 0., -10.];
     let rt = point![0., 0., 0.];
-
-    // light & environment
-    let lights = vec![
-        // (origin, power)
-        (point![1.0, 1.0, -1.0], 16.),
-        (point![-1.0, 1.0, -1.0], 2.0),
-        (point![1.0, 1.0, -1.0], 2.),
-        (point![-1.0, -1.0, -1.0], 2.0),
-    ];
 
     // sampling
     let sample_scale = 1. / (samples as f64);
@@ -112,7 +104,7 @@ pub fn ray_march(ro: Point, rd: Vector) -> f64 {
     for _ in 0..MAX_STEPS {
         let p = ro + rd * d;
         let ds = eval(p);
-        d += ds;
+        d += ds * STEP_SCALE;
         if d >= MAX_DIST || ds < SURF_DIST {
             break;
         }
@@ -164,10 +156,9 @@ pub fn sky(uv: (f64, f64)) -> Color {
 pub fn eval(p: Point) -> f64 {
     let s1 = _sphere(p, point![0.0, 0.0, 0.0], 1.);
     let s2 = _sphere(p, point![1., -0.6, -1.], 0.9);
-
     // return _boolean_union(s1, s2);
     return _smooth_subtraction(s1, s2, 0.05);
-    // return _boolean_intersection(s1, s2);
+    // return _smooth_intersection(s1, s2, 0.5);
 }
 
 ////////////////////////////////////////////////////////////////
@@ -179,13 +170,10 @@ pub fn _sphere(p: Point, c: Point, r: f64) -> f64 {
     return distance(&p, &c) - r;
 }
 
-fn _rounded_box(po: Point, s: Vector, r: f64) -> f64 {
+fn _rounded_box(p: Point, s: Vector, r: f64) -> f64 {
     // Modified to account for the radius without changing the size of the box
-
-    // p = abs(p)-(s-r);
-    // return length(max(p, 0.))+min(max(p.x, max(p.y, p.z)), 0.) - r;
-    let p = vector![po.x.abs(), po.y.abs(), po.z.abs()] - (s-vec3(r));
-    return vector![p.x.max(0.0),p.y.max(0.0),p.z.max(0.0)].norm() + p.x.max(p.y.max(p.z)).min(0.0) - r;
+    let pf = vector![p.x.abs(), p.y.abs(), p.z.abs()] - (s-vec3(r));
+    return vector![pf.x.max(0.0),pf.y.max(0.0),pf.z.max(0.0)].norm() + pf.x.max(pf.y.max(pf.z)).min(0.0) - r;
 }
 
 ////////////////////////////////////////////////////////////////
@@ -215,7 +203,7 @@ fn _smooth_subtraction(d1: f64, d2: f64, k: f64) -> f64 {
 }
 
 fn _smooth_intersection(d1: f64, d2: f64, k: f64) -> f64 {
-    let h = clamp( 0.5 + 0.5*(d2-d1)/k, 0.0, 1.0 );
+    let h = clamp( 0.5 - 0.5*(d2-d1)/k, 0.0, 1.0 );
     return lerp( d2, d1, h ) + k*h*(1.0-h);
 }
 
@@ -295,21 +283,21 @@ pub fn powf_vector(v: Vector, p: f64) -> Vector {
 
 ////////// Rotations //////////
 
-fn rot_x(p: Point, a: f64) -> Point {
+fn _rot_x(p: Point, a: f64) -> Point {
     let s = a.sin();
     let c = a.cos();
 
     return point![p.x, p.y * c + p.z * s, -s * p.y + c * p.z]
 }
 
-fn rot_y(p: Point, a: f64) -> Point {
+fn _rot_y(p: Point, a: f64) -> Point {
     let s = a.sin();
     let c = a.cos();
     
     return point![c * p.x + s * p.z, p.y, -s * p.x + c * p.z]
 }
 
-fn rot_z(p: Point, a: f64) -> Point {
+fn _rot_z(p: Point, a: f64) -> Point {
     let s = a.sin();
     let c = a.cos();
 
