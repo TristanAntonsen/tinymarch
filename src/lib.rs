@@ -1,7 +1,7 @@
-use std::f64::consts::PI;
+use std::{f64::consts::PI, ops::Mul};
 
 use image::{Rgb, RgbImage};
-use nalgebra::{distance, point, vector, Point3, Vector3};
+use nalgebra::{distance, point, vector, Point3, Vector3, Matrix3};
 use rand::Rng;
 use rayon::prelude::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 
@@ -70,7 +70,6 @@ pub fn render(res_x: usize, res_y: usize, samples: usize) {
                         } else {
                             // intersection point & normal
                             let p = ro + d * rd;
-                            // color += shading(ro, rd, p, &lights)
                             color += simple_shading(p, rd);
                         }
                     }
@@ -148,18 +147,77 @@ fn simple_shading(p: Point, rd: Vector) -> Color {
 
 }
 
-pub fn eval(p: Point) -> f64 {
-    let s1 = sphere(p, point![0.0, 0.0, 0.0], 1.);
-    let s2 = sphere(p, point![1., -0.6, -1.], 0.9);
-    return boolean_subtraction(s1, s2);
+// Environment
+pub fn sky(uv: (f64, f64)) -> Color {
+    // Background 
+    let mut c = vector![0.1,0.7,1.];
+
+    c += vec3(lerp(0.2, 0.4, 1.0 - uv.1));
+    c += vec3(lerp(0.2, 0.4, uv.0));
+
+    return c
 }
 
-pub fn sphere(p: Point, c: Point, r: f64) -> f64 {
+////////////////////////////////////////////////////////////////
+// Main Scene SDF
+////////////////////////////////////////////////////////////////
+
+pub fn eval(p: Point) -> f64 {
+    let s1 = _sphere(p, point![0.0, 0.0, 0.0], 1.);
+    let s2 = _sphere(p, point![1., -0.6, -1.], 0.9);
+
+    // return _boolean_union(s1, s2);
+    return _smooth_subtraction(s1, s2, 0.05);
+    // return _boolean_intersection(s1, s2);
+}
+
+////////////////////////////////////////////////////////////////
+// Signed Distance Functions
+////////////////////////////////////////////////////////////////
+// Main reference: https://iquilezles.org/articles/distfunctions/
+
+pub fn _sphere(p: Point, c: Point, r: f64) -> f64 {
     return distance(&p, &c) - r;
 }
 
-fn boolean_subtraction(d1: f64, d2: f64) -> f64 {
-    return (-d2).max(d1);
+fn _rounded_box(po: Point, s: Vector, r: f64) -> f64 {
+    // Modified to account for the radius without changing the size of the box
+
+    // p = abs(p)-(s-r);
+    // return length(max(p, 0.))+min(max(p.x, max(p.y, p.z)), 0.) - r;
+    let p = vector![po.x.abs(), po.y.abs(), po.z.abs()] - (s-vec3(r));
+    return vector![p.x.max(0.0),p.y.max(0.0),p.z.max(0.0)].norm() + p.x.max(p.y.max(p.z)).min(0.0) - r;
+}
+
+////////////////////////////////////////////////////////////////
+// SDF Operations
+////////////////////////////////////////////////////////////////
+
+fn _boolean_union(d1: f64, d2: f64) -> f64 {
+    return d2.min(d1)
+}
+
+fn _boolean_subtraction(d1: f64, d2: f64) -> f64 {
+    return (-d2).max(d1)
+}
+
+fn _boolean_intersection(d1: f64, d2: f64) -> f64 {
+    return d1.max(d2)
+}
+
+fn _smooth_union(d1: f64, d2: f64, k: f64) -> f64 {
+    let h = clamp( 0.5 + 0.5*(d2-d1)/k, 0.0, 1.0 );
+    return lerp( d2, d1, h ) - k*h*(1.0-h);
+}
+
+fn _smooth_subtraction(d1: f64, d2: f64, k: f64) -> f64 {
+    let h = clamp( 0.5 - 0.5*(d2+d1)/k, 0.0, 1.0 );
+    return lerp( d1, -d2, h ) + k*h*(1.0-h);
+}
+
+fn _smooth_intersection(d1: f64, d2: f64, k: f64) -> f64 {
+    let h = clamp( 0.5 + 0.5*(d2-d1)/k, 0.0, 1.0 );
+    return lerp( d2, d1, h ) + k*h*(1.0-h);
 }
 
 pub fn gradient(p: Point) -> Vector {
@@ -176,16 +234,7 @@ pub fn gradient(p: Point) -> Vector {
     vector![ddx, ddy, ddz].normalize()
 }
 
-// Environment
-pub fn sky(uv: (f64, f64)) -> Color {
-    // Background 
-    let mut c = vector![0.1,0.7,1.];
 
-    c += vec3(lerp(0.2, 0.4, 1.0 - uv.1));
-    c += vec3(lerp(0.2, 0.4, uv.0));
-
-    return c
-}
 
 pub fn save_png(pixels: Vec<Vec<Color>>, path: &str) {
     let width = pixels.len() as u32;
@@ -207,7 +256,9 @@ pub fn save_png(pixels: Vec<Vec<Color>>, path: &str) {
     img.save(path).expect("Could not save png");
 }
 
-////////// Vectors //////////
+////////////////////////////////////////////////////////////////
+// Vectors & Transforms
+////////////////////////////////////////////////////////////////
 
 // create a Vector3 with constant values
 pub fn vec3(a: f64) -> Vector {
@@ -243,7 +294,30 @@ pub fn powf_vector(v: Vector, p: f64) -> Vector {
     vector![v.x.powf(p), v.y.powf(p), v.z.powf(p)]
 }
 
-////////// Math //////////
+////////// Rotations //////////
+
+fn rot_x(p: Point, a: f64) -> Point {
+    let s = a.sin();
+    let c = a.cos();
+
+    return point![p.x, p.y * c + p.z * s, -s * p.y + c * p.z]
+}
+
+fn rot_y(p: Point, a: f64) -> Point {
+    let s = a.sin();
+    let c = a.cos();
+    
+    return point![c * p.x + s * p.z, p.y, -s * p.x + c * p.z]
+}
+
+fn rot_z(p: Point, a: f64) -> Point {
+    let s = a.sin();
+    let c = a.cos();
+
+    return point![c * p.x - s * p.y, s * p.x + c * p.y, p.z]
+}
+
+////////// Other Math //////////
 pub fn lerp(a: f64, b: f64, t: f64) -> f64 {
     a + t * (b - a)
 }
