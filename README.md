@@ -3,8 +3,16 @@
 
 Multi-threaded using [Rayon](https://docs.rs/rayon/latest/rayon/)
 
-Reworked to mirror structure of my [shadertoy ray marcher](https://www.shadertoy.com/view/dtXfzM).
+Reworked to mirror structure of my [Shadertoy ray marcher](https://www.shadertoy.com/view/dtXfzM).
 
+---
+### About Ray Marching
+
+Ray marching is a rendering technique similar to ray tracing that relies on a different method of finding the intersection between the ray and rendered geometry. This method is usually used to render geometry created with Signed Distance Fields (SDFs) rather than polygons.
+
+Originating from the camera, each ray "marches" through the scene, evaluating the SDF at each step to determine how far it can safely travel without running into anything. See my [Shadertoy demo](https://www.shadertoy.com/view/cssfWs) for a 2D breakdown of how it works.
+
+---
 This ray marcher renders an SDF scene defined in the eval() function. Below is a sample scene defined as follows:
 
 ```rust
@@ -14,9 +22,21 @@ fn eval(p) -> f64 {
     return _smooth_subtraction(s1, s2, 0.05);
 }
 ```
+
+The resolution and number of samples (for anti-aliasing) are specified in render() in main.rs:
+```rust
+render(x_res, y_res, sample_count);
+```
+
+When compiled and run, the image will be rendered to `output.png`
+
+```
+cargo run --release
+```
+
 ---
 
-![Banner](./cut_sphere.png)
+![Banner](./img/cut_sphere.png)
 
 The shading is a simple setup designed to look nice but not physically accurate. This can be changed by modifying the `simple_shading()` and `sky()` functions.
 
@@ -29,8 +49,8 @@ pub const SURF_DIST: f64 = 0.0001;  // SDF value that registers a "hit"
 pub const STEP_SCALE: f64 = 1.0;    // Modified step scale to help prevent artifacts (<=1)
 ```
 ---
-![Primitives](./primitives.png)
-![Mixed](./mix.png)
+![Primitives](./img/primitives.png)
+![Mixed](./img/mix.png)
 
 Most of the distance functions based on Inigo Quilez's (iq) shaders & functions https://iquilezles.org/.
 
