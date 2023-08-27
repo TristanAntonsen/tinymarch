@@ -1,5 +1,4 @@
 use std::f64::consts::PI;
-
 use image::{Rgb, RgbImage};
 use nalgebra::{distance, point, vector, Point3, Vector3};
 use rand::Rng;
@@ -60,7 +59,6 @@ pub fn render(res_x: usize, res_y: usize, samples: usize) {
                         if d >= MAX_DIST {
                             color += sky((u, v));
                         } else {
-                            // intersection point & normal
                             let p = ro + d * rd;
                             color += simple_shading(p, rd);
                         }
@@ -120,7 +118,6 @@ fn simple_shading(p: Point, rd: Vector) -> Color {
     let light1 = n.dot(&vector![1., -1., -1.].normalize())*0.5+0.5;
     let light2 = n.dot(&vector![-1., -1., -1.].normalize())*0.5+0.5;
     let illumination = 0.5 * light1 + 0.5 * light2;
-    color *= illumination;
 
     // fake fresnel
     let n_dot_v = n.dot(&rd) + 1.;
@@ -128,9 +125,9 @@ fn simple_shading(p: Point, rd: Vector) -> Color {
     
     // Specular highlights
     let r = reflect(vector![1., 0., 0.].normalize(), n);
-
     let specular = vec3(1.0) * r.dot(&rd).max(0.0).powf(10.0) * 0.08;
 
+    color *= illumination;
     color += vec3(fresnel);
     color += specular;
 
@@ -162,7 +159,7 @@ pub fn eval(p: Point) -> f64 {
 }
 
 ////////////////////////////////////////////////////////////////
-// Signed Distance Functions
+// Signed Distance Fields
 ////////////////////////////////////////////////////////////////
 // Main reference: https://iquilezles.org/articles/distfunctions/
 
@@ -182,10 +179,23 @@ fn _rounded_cylinder(p: Point, r1: f64, r2: f64, h: f64) -> f64 {
 }
 
 fn _torus( p: Point, r1: f64, r2: f64 ) -> f64 {
-// vec2 q = vec2(length(p.xz)-t.x,p.y);
-// return length(q)-t.y;
   let q = vector![vector![p.x, p.z].norm()-r1, p.y];
   return q.norm()-r2;
+}
+
+// Gradient of a Signed Distance Field
+pub fn gradient(p: Point) -> Vector {
+    let epsilon = 0.0001;
+    let dx = Vector3::new(epsilon, 0., 0.);
+    let dy = Vector3::new(0., epsilon, 0.);
+    let dz = Vector3::new(0., 0., epsilon);
+
+    // Gradient: dSDF/dx, dy, dz
+    let ddx = eval(p + dx) - eval(p - dx);
+    let ddy = eval(p + dy) - eval(p - dy);
+    let ddz = eval(p + dz) - eval(p - dz);
+
+    vector![ddx, ddy, ddz].normalize()
 }
 
 ////////////////////////////////////////////////////////////////
@@ -217,42 +227,6 @@ fn _smooth_subtraction(d1: f64, d2: f64, k: f64) -> f64 {
 fn _smooth_intersection(d1: f64, d2: f64, k: f64) -> f64 {
     let h = clamp( 0.5 - 0.5*(d2-d1)/k, 0.0, 1.0 );
     return lerp( d2, d1, h ) + k*h*(1.0-h);
-}
-
-pub fn gradient(p: Point) -> Vector {
-    let epsilon = 0.0001;
-    let dx = Vector3::new(epsilon, 0., 0.);
-    let dy = Vector3::new(0., epsilon, 0.);
-    let dz = Vector3::new(0., 0., epsilon);
-
-    // Gradient: dSDF/dx, dy, dz
-    let ddx = eval(p + dx) - eval(p - dx);
-    let ddy = eval(p + dy) - eval(p - dy);
-    let ddz = eval(p + dz) - eval(p - dz);
-
-    vector![ddx, ddy, ddz].normalize()
-}
-
-
-
-pub fn save_png(pixels: Vec<Vec<Color>>, path: &str) {
-    let width = pixels.len() as u32;
-    let height = pixels[0].len() as u32;
-
-    let mut img = RgbImage::new(width, height);
-    for x in 0..width {
-        for y in 0..height {
-            let color = pixels[x as usize][y as usize];
-            let r = (color[0] * 255.0).round() as u8;
-            let g = (color[1] * 255.0).round() as u8;
-            let b = (color[2] * 255.0).round() as u8;
-
-            img.put_pixel(x, y, Rgb([r, g, b]));
-        }
-    }
-    println!("{} exported.", path);
-
-    img.save(path).expect("Could not save png");
 }
 
 ////////////////////////////////////////////////////////////////
@@ -323,4 +297,28 @@ pub fn lerp(a: f64, b: f64, t: f64) -> f64 {
 
 fn clamp(x: f64, a: f64, b: f64) -> f64 {
     x.max(a).min(b)
+}
+
+////////////////////////////////////////////////////////////////
+// Image Writing
+////////////////////////////////////////////////////////////////
+
+pub fn save_png(pixels: Vec<Vec<Color>>, path: &str) {
+    let width = pixels.len() as u32;
+    let height = pixels[0].len() as u32;
+
+    let mut img = RgbImage::new(width, height);
+    for x in 0..width {
+        for y in 0..height {
+            let color = pixels[x as usize][y as usize];
+            let r = (color[0] * 255.0).round() as u8;
+            let g = (color[1] * 255.0).round() as u8;
+            let b = (color[2] * 255.0).round() as u8;
+
+            img.put_pixel(x, y, Rgb([r, g, b]));
+        }
+    }
+    println!("{} exported.", path);
+
+    img.save(path).expect("Could not save png");
 }

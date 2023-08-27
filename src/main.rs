@@ -6,7 +6,7 @@ fn main() {
 
     let x_res = 1080;
     let y_res = 1080;
-    let sample_count = 8; // anti-aliasing
+    let sample_count = 10; // anti-aliasing
 
     render(x_res, y_res, sample_count);
 
