@@ -24,8 +24,14 @@ pub const RED: Color = vector![1.0, 0.0, 0.0];
 pub const GREEN: Color = vector![0.0, 1.0, 0.0];
 pub const BLUE: Color = vector![0.0, 0.0, 1.0];
 
+// ======================================================================
+// ==================== Main Loop & Render Functions ====================
+// ======================================================================
+
 pub fn render(res_x: usize, res_y: usize, samples: usize) {
-    let ro = point![0., 0., -1.];
+    let ro = point![0., 0., -10.];
+    let rt = point![0., 0., 0.];
+
     let viewport_width = 1.0;
     let viewport_height = res_y as f64 / res_x as f64;
 
@@ -63,8 +69,7 @@ pub fn render(res_x: usize, res_y: usize, samples: usize) {
                         let v = (y as f64 + sampler.gen::<f64>()) / res_y as f64;
 
                         // ray direction
-                        let rd =
-                            (lower_left_corner + u * horizontal + v * vertical - ro).normalize();
+                        let rd = ray_direction((u - 0.5, v - 0.5), ro, rt, (res_x, res_y));
 
                         // ray marching
                         let d = ray_march(ro, rd);
@@ -87,6 +92,30 @@ pub fn render(res_x: usize, res_y: usize, samples: usize) {
 
     save_png(pixels, "output.png")
 }
+
+// Ray direction
+fn ray_direction(uv: (f64, f64), ro: Point, rt: Point, res: (usize, usize)) -> Vector {
+
+    // screen orientation
+    let vup = vector![0., 1.0, 0.0];
+    let aspect_ratio = (res.0 as f64) / (res.1 as f64);
+
+    let vw = (ro - rt).normalize();
+    let vu = (vup.cross(&vw)).normalize();
+    let vv = vw.cross(&vu);
+    let theta = 30. * 2. * PI / 180.; // half FOV
+    let viewport_height = 2. * (theta.tan());
+    let viewport_width = aspect_ratio * viewport_height;
+    let horizontal = -viewport_width * vu;
+    let vertical = viewport_height * vv;
+    let focus_dist = (ro - rt).norm();
+    let center = ro - vw * focus_dist;
+
+    let rd = center + uv.0 * horizontal + uv.1 * vertical - ro;
+
+    return rd.normalize();
+}
+
 
 // shading
 fn _pbr(_ro: Point, rd: Vector, p: Point, lights: &Vec<(Point, f64)>) -> Color {
