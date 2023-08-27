@@ -36,7 +36,8 @@ cargo run --release
 
 ---
 
-![Banner](./img/cut_sphere.png)
+![Banner](./img/ripple_union.png)
+*A smooth union of a sphere and a cube displaced based on the sphere's distance function.*
 
 The shading is a simple setup designed to look nice but not physically accurate. This can be changed by modifying the `simple_shading()` and `sky()` functions.
 
@@ -49,10 +50,15 @@ pub const SURF_DIST: f64 = 0.0001;  // SDF value that registers a "hit"
 pub const STEP_SCALE: f64 = 1.0;    // Modified step scale to help prevent artifacts (<=1)
 ```
 ---
-Some primitive shapes:
 ![Primitives](./img/primitives.png)
-Linear interpolation between a sphere and a box:
+*Some primitive shapes*
+
+![Cut Sphere](./img/cut_sphere.png)
+*A (smooth) boolean subtraction operation*
+
 ![Mixed](./img/mix.png)
+*Linear interpolation between a sphere and a box*
+
 ---
 Most of the distance functions are based on Inigo Quilez's (iq) shaders & functions https://iquilezles.org/.
 
