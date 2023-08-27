@@ -253,9 +253,12 @@ pub fn ray_march(ro: Point, rd: Vector) -> f64 {
 pub fn sky(uv: (f64, f64)) -> Color {
     // Background 
     let v = vector![uv.0, uv.1].norm() * 0.75;
+    let mut c = vector![0.1,0.7,1.];
 
-    return vec3(lerp(0.1, 0.2, uv.1))
-    // let fragColor = vec4f(mix(0.1, 0.2, smoothstep(0.0, 1.0, uv.y)));
+    c += vec3(lerp(0.2, 0.4, 1.0 - uv.1));
+    c += vec3(lerp(0.2, 0.4, uv.0));
+
+    return c
 }
 
 pub fn save_png(pixels: Vec<Vec<Color>>, path: &str) {
