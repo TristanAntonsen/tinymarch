@@ -71,7 +71,7 @@ pub fn render(res_x: usize, res_y: usize, samples: usize) {
                             // intersection point & normal
                             let p = ro + d * rd;
                             // color += shading(ro, rd, p, &lights)
-                            color += simple_shading(p);
+                            color += simple_shading(p, rd);
                         }
                     }
                     color *= sample_scale;
@@ -108,14 +108,19 @@ fn ray_direction(uv: (f64, f64), ro: Point, rt: Point, res: (usize, usize)) -> V
     return rd.normalize();
 }
 
-fn simple_shading(p: Point) -> Color {
+fn simple_shading(p: Point, rd: Vector) -> Color {
     let n = gradient(p);
+    let mut color = vector![0.2,0.8,1.];
 
-    // let light1 = dot(N, normalize(vec3(1,-1,-1)))*.5+.5;
+    // lighting
     let light1 = n.dot(&vector![1., -1., -1.].normalize())*0.5+0.5;
     let light2 = n.dot(&vector![-1., -1., -1.].normalize())*0.5+0.5;
+    let illumination = 0.5 * light1 + 0.5 * light2;
+    color *= illumination;
 
-    let color = 0.5 * vec3(light1) + 0.5 * vec3(light2);
+    // fake fresnel
+    let n_dot_v = n.dot(&rd) + 1.;
+    color += vec3(n_dot_v * n_dot_v * 0.45);
 
     return color;
 
@@ -252,7 +257,6 @@ pub fn ray_march(ro: Point, rd: Vector) -> f64 {
 // Environment
 pub fn sky(uv: (f64, f64)) -> Color {
     // Background 
-    let v = vector![uv.0, uv.1].norm() * 0.75;
     let mut c = vector![0.1,0.7,1.];
 
     c += vec3(lerp(0.2, 0.4, 1.0 - uv.1));
