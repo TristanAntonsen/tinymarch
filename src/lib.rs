@@ -32,16 +32,6 @@ pub fn render(res_x: usize, res_y: usize, samples: usize) {
     let ro = point![0., 0., -10.];
     let rt = point![0., 0., 0.];
 
-    let viewport_width = 1.0;
-    let viewport_height = res_y as f64 / res_x as f64;
-
-    // screen orientation
-    let horizontal = vector![viewport_width, 0., 0.];
-    let vertical = vector![0., viewport_height, 0.];
-    let focal_length = 1.0;
-    let lower_left_corner =
-        ro - 0.5 * horizontal - 0.5 * vertical - vector![0.0, 0.0, -focal_length];
-
     // light & environment
     let lights = vec![
         // (origin, power)
@@ -66,7 +56,7 @@ pub fn render(res_x: usize, res_y: usize, samples: usize) {
                     for _ in 0..samples {
                         // screen space coordinates
                         let u = (x as f64 + sampler.gen::<f64>()) / res_x as f64;
-                        let v = (y as f64 + sampler.gen::<f64>()) / res_y as f64;
+                        let v = 1.0 - (y as f64 + sampler.gen::<f64>()) / res_y as f64; // flip y
 
                         // ray direction
                         let rd = ray_direction((u - 0.5, v - 0.5), ro, rt, (res_x, res_y));
@@ -80,11 +70,13 @@ pub fn render(res_x: usize, res_y: usize, samples: usize) {
                         } else {
                             // intersection point & normal
                             let p = ro + d * rd;
-                            color += _pbr(ro, rd, p, &lights)
+                            // color += shading(ro, rd, p, &lights)
+                            color += simple_shading(p);
                         }
                     }
                     color *= sample_scale;
-                    gamma_correct(color)
+                    // gamma_correct(color); // only if PBR shading
+                    color
                 })
                 .collect::<Vec<Color>>()
         })
@@ -116,9 +108,21 @@ fn ray_direction(uv: (f64, f64), ro: Point, rt: Point, res: (usize, usize)) -> V
     return rd.normalize();
 }
 
+fn simple_shading(p: Point) -> Color {
+    let n = gradient(p);
+
+    // let light1 = dot(N, normalize(vec3(1,-1,-1)))*.5+.5;
+    let light1 = n.dot(&vector![1., -1., -1.].normalize())*0.5+0.5;
+    let light2 = n.dot(&vector![-1., -1., -1.].normalize())*0.5+0.5;
+
+    let color = 0.5 * vec3(light1) + 0.5 * vec3(light2);
+
+    return color;
+
+}
 
 // shading
-fn _pbr(_ro: Point, rd: Vector, p: Point, lights: &Vec<(Point, f64)>) -> Color {
+fn shading(_ro: Point, rd: Vector, p: Point, lights: &Vec<(Point, f64)>) -> Color {
     // material parameters
     let albedo = vector![1.0, 0.0, 0.0];
     let roughness = 0.5;
@@ -204,15 +208,17 @@ fn geometry_schlick_ggx(n_dot_v: f64, roughness: f64) -> f64 {
 }
 
 pub fn eval(p: Point) -> f64 {
-    let s1 = sphere(p, point![0.0, -10.0, 1.0], 9.5);
-    let s2 = sphere(p, point![0.0, 0.0, 1.0], 0.5);
-    // let s3 = sphere(p, point![0.75, -0.5, 2.0], 0.1);
-    return s1.min(s2);
-    // s2
+    let s1 = sphere(p, point![0.0, 0.0, 0.0], 0.5);
+    let s2 = sphere(p, point![0.5, -0.3, -0.5], 0.45);
+    return boolean_subtraction(s1, s2);
 }
 
 pub fn sphere(p: Point, c: Point, r: f64) -> f64 {
     return distance(&p, &c) - r;
+}
+
+fn boolean_subtraction(d1: f64, d2: f64) -> f64 {
+    return (-d2).max(d1);
 }
 
 pub fn gradient(p: Point) -> Vector {
@@ -247,6 +253,8 @@ pub fn ray_march(ro: Point, rd: Vector) -> f64 {
 pub fn sky(rd: Vector) -> Color {
     let t = 0.5 * (rd.y + 1.0);
     0.5 * (t * vector![1., 1., 1.] + (1.0 - t) * vector!(0.5, 0.7, 1.0))
+
+    
 }
 
 pub fn save_png(pixels: Vec<Vec<Color>>, path: &str) {
