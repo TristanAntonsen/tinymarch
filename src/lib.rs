@@ -1,10 +1,6 @@
-use core::num;
-use std::env;
 use std::f64::consts::PI;
 
-use image::io::Reader as ImageReader;
-use image::ImageBuffer;
-use image::{codecs::hdr, DynamicImage, GenericImageView, Rgb, RgbImage};
+use image::{Rgb, RgbImage};
 use nalgebra::{distance, point, vector, Point3, Vector3};
 use rand::Rng;
 use rayon::prelude::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
@@ -48,17 +44,7 @@ pub fn render(res_x: usize, res_y: usize, samples: usize) {
         (point![1.0, 1.0, -1.0], 2.),
         (point![-1.0, -1.0, -1.0], 2.0),
     ];
-    // environment texture
-    let env = ImageReader::open("canary_wharf_4k.hdr")
-        .expect("Could not load image.")
-        .decode()
-        .unwrap();
-    let irmap = ImageReader::open("fake_ir_map.png")
-        .expect("Could not load image.")
-        .decode()
-        .unwrap();
 
-    // create_ir_map(&env);
     // sampling
     let sample_scale = 1. / (samples as f64);
 
@@ -85,14 +71,11 @@ pub fn render(res_x: usize, res_y: usize, samples: usize) {
 
                         // shading
                         if d >= MAX_DIST {
-                            // color += sky(rd);
-                            color += envmap(rd, &env);
+                            color += sky(rd);
                         } else {
                             // intersection point & normal
                             let p = ro + d * rd;
                             color += _pbr(ro, rd, p, &lights)
-                            // color += _pbr_env(ro, rd, p, &lights, &env, &irmap);
-                            // color += _diffuse(ro, rd, &env)
                         }
                     }
                     color *= sample_scale;
@@ -153,111 +136,9 @@ fn _pbr(_ro: Point, rd: Vector, p: Point, lights: &Vec<(Point, f64)>) -> Color {
     return ambient + lo;
 }
 
-fn _pbr_env(
-    ro: Point,
-    rd: Vector,
-    p: Point,
-    lights: &Vec<(Point, f64)>,
-    env: &DynamicImage,
-    irmap: &DynamicImage,
-) -> Color {
-    // material parameters
-    let albedo = vector![1.0, 0.0, 0.0];
-    let roughness = 0.5;
-    let metallic = 0.0;
-    let mut f0 = vec3(0.04);
-    f0 = mix_vectors(f0, albedo, metallic);
-
-    let n = gradient(p);
-    let v = (ro - p).normalize();
-    let r = reflect(-v, n);
-
-    let f = fresnel_schlick_roughness(n.dot(&v).max(0.0), f0, roughness);
-
-    let ks = f;
-    let kd = (vec3(1.0) - ks) * (1.0 - metallic);
-
-    let c = envmap(r, env);
-    let irradiance = envmap(r, irmap);
-    let diffuse = multiply_vectors(irradiance, c);
-
-
-
-    let lo = multiply_vectors(
-        multiply_vectors(kd, albedo) / PI,
-        // multiply_vectors(kd, diffuse(ro, rd)) / PI + specular,
-        irradiance,
-    );
-
-    lo
-}
-
-fn _diffuse(mut ro: Point, mut rd: Vector, env: &DynamicImage) -> Color {
-    let mut col = vector![1., 0.5, 0.5];
-    let attenuation = 0.6;
-    let bounces = 12;
-
-    let mut d = ray_march(ro, rd).abs();
-    let mut n;
-    let mut p;
-    for _ in 0..bounces {
-        if d <= MAX_DIST {
-            p = ro + d * rd;
-            n = gradient(p);
-            // ro
-            ro = p + n * 0.01;
-            // let refl = reflect(r.direction, n);
-            let scattered = (n + random_in_unit_sphere()).normalize();
-            rd = scattered;
-            col = col * attenuation;
-
-            d = ray_march(ro, rd).abs();
-        } else {
-            // let bg = sky(rd);
-            let bg = envmap(rd, env);
-            // println!("{:?}", bg);
-
-            let diffuse = vector![col[0] * bg[0], col[1] * bg[1], col[2] * bg[2]];
-            return diffuse;
-        };
-    }
-
-    return BLACK;
-}
-
-////////// Random sampling //////////
-fn random_in_unit_sphere() -> Vector {
-    // Returning a vector because it's easier for the math
-    // while loop
-    loop {
-        let p = random_vector(false);
-        if p.norm_squared() >= 1.0 {
-            continue;
-        }
-        // lambertian material normalizes
-        return p.normalize();
-    }
-}
-// return a vector with random components between -1 and 1 with optional unit vector output
-pub fn random_vector(normalize: bool) -> Vector {
-    let mut rng = rand::thread_rng();
-    let v =
-        Vector3::new(rng.gen::<f64>(), rng.gen::<f64>(), rng.gen::<f64>()).map(|i| i * 2.0 - 1.0);
-
-    if normalize {
-        return v.normalize();
-    } else {
-        return v;
-    }
-}
-
 // Fresnel Equation - Fresnel-Schlick approximation
 fn fresnel_schlick(cos_theta: f64, f0: Vector) -> Vector {
     f0 + (vec3(1.0) - f0) * clamp(1.0 - cos_theta, 0.0, 1.0).powf(5.0)
-}
-
-fn fresnel_schlick_roughness(cos_theta: f64, f0: Vector, roughness: f64) -> Vector {
-    f0 + (vector_max(vec3(1.0) - f0, f0)) * clamp(1.0 - cos_theta, 0.0, 1.0).powf(5.0)
 }
 
 // Normal Distribution Function
@@ -337,83 +218,6 @@ pub fn ray_march(ro: Point, rd: Vector) -> f64 {
 pub fn sky(rd: Vector) -> Color {
     let t = 0.5 * (rd.y + 1.0);
     0.5 * (t * vector![1., 1., 1.] + (1.0 - t) * vector!(0.5, 0.7, 1.0))
-}
-
-pub fn envmap(v: Vector, map: &DynamicImage) -> Color {
-    // still overlapping/repeating somehow
-    let (u, v) = spherical_map(&v);
-    // u = (u - 0.25) % 1.;
-    let c = get_uv_pixel(map, u, v).map(|p| p / 255.);
-    c
-}
-
-pub fn create_ir_map(map: &DynamicImage) -> () {
-    let x_res: u32 = 480;
-    let y_res: u32 = 300;
-    let mut ir_map = RgbImage::new(x_res, y_res);
-    let sample_delta = 0.025;
-    let phi_samples = (TAU / sample_delta).floor() as usize;
-    let theta_samples = ((PI / 2.0) / sample_delta).floor() as usize;
-    let num_samples = (phi_samples * theta_samples) as f64;
-
-    for (x, y, pixel) in ir_map.enumerate_pixels_mut() {
-
-        let normal = vector![x as f64, y as f64, 1.].normalize();
-
-        let mut irradiance = vec3(0.0);
-        let mut up = vector![0., 1., 0.];
-        let right = up.cross(&normal);
-        up = normal.cross(&right);
-        let mut phi: f64 = 0.0;
-        let mut theta: f64 = 0.0;
-
-        for _ in 0..phi_samples {
-            for _ in 0..theta_samples {
-                // spherical to cartesian (in tangent space)
-                let tan_sample = vector![theta.sin() * phi.cos(), theta.sin() * phi.sin(), theta.cos()];
-
-                // tangent space to world
-                let sample_vec = tan_sample.x * right + tan_sample.x * up + tan_sample.z * normal;
-                let map_val = map.get_pixel(sample_vec.x as u32, sample_vec.y as u32);
-                let sin_cos = theta.sin() * theta.cos();
-                irradiance += vector![
-                    map_val[0] as f64 * sin_cos,
-                    map_val[1] as f64 * sin_cos,
-                    map_val[2] as f64 * sin_cos
-                ];
-                
-            }
-        }
-
-        *pixel = image::Rgb([
-            (irradiance.x / num_samples).floor() as u8,
-            (irradiance.y / num_samples).floor() as u8,
-            (irradiance.z / num_samples).floor() as u8
-        ]);
-    }
-    ir_map.save("ir_map.png");
-}
-
-pub fn spherical_map(v: &Vector) -> (f64, f64) {
-    // http://raytracerchallenge.com/bonus/texture-mapping.html
-
-    let r = v.norm();
-    let theta = (v.x / v.z).atan();
-    let phi = (v.y / r).acos();
-    let raw_u = theta / TAU;
-    let u = 1. - (raw_u + 0.5);
-    let v = phi / PI;
-
-    (u, v)
-}
-
-pub fn get_uv_pixel(image: &DynamicImage, u: f64, v: f64) -> Color {
-    // return the pixel of an image at uv coordinates
-    let i = (u * image.width() as f64).floor() as u32;
-    let j = (v * image.height() as f64).floor() as u32;
-    let c = image.get_pixel(i, j);
-
-    vector![c[0] as f64, c[1] as f64, c[2] as f64]
 }
 
 pub fn save_png(pixels: Vec<Vec<Color>>, path: &str) {
